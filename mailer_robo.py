@@ -24,10 +24,10 @@ import subprocess
 import traceback
 
 
-INTERVALO_MINUTOS = 5
+INTERVALO_MINUTOS = 2
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
+SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_oficial_IPCA.py")
 
 
 ################################## LEITURA DE EMAILS DO OUTLOOK ##################################

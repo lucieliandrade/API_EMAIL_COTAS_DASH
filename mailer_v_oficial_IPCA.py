@@ -7,9 +7,11 @@ import win32com.client as win32
 # import requests
 import openpyxl
 # from bs4 import BeautifulSoup
-import tkinter as tk 
+import tkinter as tk
 import subprocess
 import os
+import sys
+import json
 from pathlib import Path
 from msoffice2pdf import convert
 from selenium import webdriver
@@ -150,6 +152,34 @@ dmenos1 = dias_uteis[dias_uteis['Dias Uteis'] < hoje]['Dias Uteis'].iloc[-1]
 ano = dmenos1[:4]
 mes = dmenos1[5:7]
 dia = dmenos1[-2:]
+
+# Ler argumentos: --data YYYY-MM-DD --fundos "FUNDO1,FUNDO2" --resultado caminho.json
+_arg_data = None
+_arg_fundos = None
+_arg_resultado = None
+
+for i, arg in enumerate(sys.argv[1:], 1):
+    if arg == '--data' and i < len(sys.argv) - 1:
+        _arg_data = sys.argv[i + 1]
+    elif arg == '--fundos' and i < len(sys.argv) - 1:
+        _arg_fundos = sys.argv[i + 1]
+    elif arg == '--resultado' and i < len(sys.argv) - 1:
+        _arg_resultado = sys.argv[i + 1]
+
+if _arg_data:
+    data_fmt = _arg_data
+    if '/' in data_fmt:
+        partes = data_fmt.split('/')
+        data_fmt = f"{partes[2]}-{partes[1].zfill(2)}-{partes[0].zfill(2)}"
+    if data_fmt in dias_uteis['Dias Uteis'].values:
+        dmenos1 = data_fmt
+        ano = dmenos1[:4]
+        mes = dmenos1[5:7]
+        dia = dmenos1[-2:]
+        print(f"Data de referencia (via argumento): {dmenos1}")
+    else:
+        print(f"ERRO: Data {data_fmt} nao e dia util.")
+        sys.exit(1)
 
 # retorna D-X
 def dmenos(dus):
@@ -1923,6 +1953,17 @@ def get_email_infos():
 # dicionário que contém as seguintes infos: [0]"NOME DO FUNDO" , [1]"TO", [2]"CC", [3]"BCC"
 infos_email = get_email_infos()
 
+# função auxiliar: envia direto se todos os destinatários são @capitaniainvestimentos.com.br, senão abre para revisão
+def _enviar_ou_exibir(email):
+    import re
+    campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
+    enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
+    if enderecos and all(e.lower().endswith('@capitaniainvestimentos.com.br') for e in enderecos):
+        email.Send()
+    else:
+        email.Display()
+
+
 # função de Envio
 def send_outlook(fund):
 
@@ -1950,7 +1991,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['bradesco'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['bradesco'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
         outlook = win32.Dispatch('Outlook.Application')
         email = outlook.CreateItem(0)
@@ -1960,7 +2001,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['itau'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['itau'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
     else:
         outlook = win32.Dispatch('Outlook.Application')
@@ -1971,7 +2012,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
 
 ################################## PDF ##################################
@@ -1990,7 +2031,9 @@ def salvar_pdf(xlsx_path: str):
 ################################## MAILER ##################################
 
 def mailer(fundos_selecionados):
-    
+
+    _fundos_sucesso = []
+
     for f in fundos_selecionados:
         
         # Teste 0: Verifica se as cotas estão corretas.
@@ -2114,16 +2157,19 @@ def mailer(fundos_selecionados):
             #se já editou e fechou a planilha, é pq está pronto pra ser enviado
 
             send_outlook(f)
-            
+
             print(f'{f}: Batimento OK. E-mail Enviado')
+            _fundos_sucesso.append(f)
 
             # except:
             #     print(f"{f} - Não foi possível imprimir o pdf com o Libreoffice")
-            
+
         except Exception as e:
             import traceback
             print(f'{f} - Problema: {e}')
             traceback.print_exc()
+
+    return _fundos_sucesso
 
 
 
@@ -2177,12 +2223,25 @@ class Menu:
             self.selected_options_listbox.insert(tk.END, option)
         print(self.selected_options)
 
-root = tk.Tk()
-menu = Menu(root)
-root.mainloop()
+if _arg_fundos:
+    fundos_validos = [f.strip() for f in _arg_fundos.split(',') if f.strip() in tudo]
+    fundos_invalidos = [f.strip() for f in _arg_fundos.split(',') if f.strip() not in tudo]
+    if fundos_invalidos:
+        print(f"AVISO: Fundos nao encontrados e ignorados: {', '.join(fundos_invalidos)}")
+    if not fundos_validos:
+        print("ERRO: Nenhum fundo valido encontrado.")
+        sys.exit(1)
+    _fundos_ok = mailer(fundos_validos)
+    if _arg_resultado:
+        with open(_arg_resultado, 'w', encoding='utf-8') as _f:
+            json.dump(_fundos_ok, _f, ensure_ascii=False, indent=2)
+else:
+    root = tk.Tk()
+    menu = Menu(root)
+    root.mainloop()
 
-##################### MAILER #####################
-mailer(menu.selected_options)
+    ##################### MAILER #####################
+    mailer(menu.selected_options)
 
 
 

@@ -993,7 +993,7 @@ for m in meses_previsao:
 
     ipca.loc[ipca['mes']==m, 'inf_mensal'] = mes_taxa[m]
 else:
-    print("ℹ Processando data histórica - não há necessidade de projeções IPCA") 
+    print("Processando data historica - nao ha necessidade de projecoes IPCA")
 
 
 # selecionando somente as colunas desejadas
@@ -1999,6 +1999,17 @@ def get_email_infos():
 # dicionário que contém as seguintes infos: [0]"NOME DO FUNDO" , [1]"TO", [2]"CC", [3]"BCC"
 infos_email = get_email_infos()
 
+# função auxiliar: envia direto se todos os destinatários são @capitaniainvestimentos.com.br, senão abre para revisão
+def _enviar_ou_exibir(email):
+    import re
+    campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
+    enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
+    if enderecos and all(e.lower().endswith('@capitaniainvestimentos.com.br') for e in enderecos):
+        email.Send()
+    else:
+        email.Display()
+
+
 # função de Envio
 def send_outlook(fund):
 
@@ -2026,7 +2037,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['bradesco'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['bradesco'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
         outlook = win32.Dispatch('Outlook.Application')
         email = outlook.CreateItem(0)
@@ -2036,7 +2047,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['itau'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['itau'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
     else:
         outlook = win32.Dispatch('Outlook.Application')
@@ -2047,7 +2058,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        email.Display()
+        _enviar_ou_exibir(email)
 
 
 ################################## PDF ##################################
