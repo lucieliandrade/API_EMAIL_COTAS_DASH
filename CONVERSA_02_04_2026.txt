@@ -1,0 +1,58 @@
+RESUMO DA CONVERSA - 02/04/2026
+================================================
+
+CONTINUAÇÃO DA SESSÃO ANTERIOR (01/04/2026)
+
+================================================
+O QUE FOI FEITO HOJE:
+================================================
+
+1. mailer_robo.py
+   - Adicionado log direto no arquivo robo_log.txt via classe _Tee
+   - Funciona independente de como o processo é iniciado (pythonw, bat, terminal)
+   - Dashboard consegue ler o status do robô corretamente agora
+
+2. mailer_v_oficial_IPCA.py + mailer_v_auto.py
+   - Domínios internos expandidos: @capitaniainvestimentos.com.br E @capitania.net
+   - Tag [INTERNO] adicionada ao FINAL do assunto (não no início)
+   - Ex: "COTA DIÁRIA | CAPITÂNIA FIX [INTERNO]"
+
+3. status_mailers.py (dashboard final)
+   - Cards redesenhados: barra colorida no topo, data grande, pílula de status
+   - Verde = completo, Azul = hoje com pendentes, Amarelo = outros dias pendentes
+   - Coluna "Fundo" alargada (width=220)
+   - Dashboard acessível na rede: http://192.168.3.78:8501
+   - Todos na mesma rede do escritório podem acessar pelo navegador
+
+================================================
+STATUS ATUAL DO SISTEMA:
+================================================
+
+- Robô:      mailer_robo.py rodando a cada 2 minutos
+- Mailer:    mailer_v_oficial_IPCA.py (chamado pelo robô)
+- Dashboard: http://192.168.3.78:8501 (acesso pela rede)
+             http://localhost:8501 (acesso local)
+- Startup:   mailer_robo.bat na pasta Startup do Windows (inicia no login)
+
+================================================
+PENDENTE (NÃO RESOLVIDO):
+================================================
+
+PROBLEMA: lógica de envio automático disparou BNY11756 durante teste
+PERGUNTAS ABERTAS (respondidas amanhã):
+1. Quais fundos podem ser disparados automaticamente?
+2. O critério é só pelo domínio ou existe outra regra?
+3. Quer modo seguro para testes (sempre Display)?
+4. Quais fundos o robô pode disparar sem supervisão?
+5. Internos devem abrir para revisão antes de disparar?
+
+================================================
+ARQUIVOS NO REPOSITÓRIO:
+================================================
+
+GitHub: https://github.com/lucieliandrade/API_EMAIL_COTAS_DASH
+
+Arquivos _VF = versão com todas as mudanças (salvo em 01/04)
+Arquivos sem _VF = versão anterior (backup)
+CONVERSA_01_04_2026.txt = resumo da sessão anterior
+CONVERSA_02_04_2026.txt = este arquivo

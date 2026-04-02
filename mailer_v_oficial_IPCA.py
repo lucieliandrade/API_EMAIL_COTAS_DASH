@@ -1958,7 +1958,9 @@ def _enviar_ou_exibir(email):
     import re
     campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
     enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
-    if enderecos and all(e.lower().endswith('@capitaniainvestimentos.com.br') for e in enderecos):
+    dominios_internos = ('@capitaniainvestimentos.com.br', '@capitania.net')
+    if enderecos and all(e.lower().endswith(dominios_internos) for e in enderecos):
+        email.Subject = f"{email.Subject} [INTERNO]"
         email.Send()
     else:
         email.Display()
@@ -2033,40 +2035,46 @@ def salvar_pdf(xlsx_path: str):
 def mailer(fundos_selecionados):
 
     _fundos_sucesso = []
+    _erros    = {}
+    _horarios = {}
 
     for f in fundos_selecionados:
-        
+
         # Teste 0: Verifica se as cotas estão corretas.
-        if not check_cotas(f)[0]:
-            print(check_cotas(f)[1])
-            continue  # Interrompe o loop imediatamente
-        
+        check0 = check_cotas(f)
+        if not check0[0]:
+            print(check0[1])
+            _erros[f] = str(check0[1])[:60]
+            continue
+
         # Teste 1: Verifica o benchmark (só é executado se o teste0 tiver sido "ok")
         if check_bench(f):
             print(f'{f}: Tabela do {fundo_bench[f]} sem dados para o dia {dmenos1}')
+            _erros[f] = f"bench sem dados: {fundo_bench[f]}"
             continue
 
         # Teste 3: Verifica o bat_pl.
         if not bat_pl(f):
             print(f +': PL não bateu')
+            _erros[f] = "PL nao bateu"
             continue
-
-        # Teste 4: Verifica se há algum NaN no dataframe gerado.
-        # Aqui, a lógica é invertida: se houver algum NaN (ou seja, se o teste for True), então há erro.
 
         # Teste 2: Verifica o batimento.
         if not batimento(f):
             print(f +': Carteira não bate com COTAS_CAP')
+            _erros[f] = "carteira nao bate"
             continue
 
         try:
             df = gerador_df(f)
         except:
             print(f + ': não foi possível gerar a tabela')
+            _erros[f] = "erro ao gerar tabela"
             continue
-        
+
         if True in df.isna().any().values.tolist():
             print(f +': Existem valores NaN na tabela')
+            _erros[f] = "valores NaN"
             continue
         
         
@@ -2160,6 +2168,7 @@ def mailer(fundos_selecionados):
 
             print(f'{f}: Batimento OK. E-mail Enviado')
             _fundos_sucesso.append(f)
+            _horarios[f] = datetime.now().strftime('%H:%M')
 
             # except:
             #     print(f"{f} - Não foi possível imprimir o pdf com o Libreoffice")
@@ -2168,6 +2177,25 @@ def mailer(fundos_selecionados):
             import traceback
             print(f'{f} - Problema: {e}')
             traceback.print_exc()
+            _erros[f] = str(e)[:60]
+
+    # Salvar erros e horários no JSON_DIR (keyed pela data de referência = dmenos1)
+    _pasta_json = os.path.join(diretorio, "json")
+    os.makedirs(_pasta_json, exist_ok=True)
+
+    def _merge_json(path, novo):
+        existente = {}
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as _f:
+                existente = json.load(_f)
+        existente.update(novo)
+        with open(path, 'w', encoding='utf-8') as _f:
+            json.dump(existente, _f, ensure_ascii=False, indent=2)
+
+    if _erros:
+        _merge_json(os.path.join(_pasta_json, f"erros_{ano}{mes}{dia}.json"), _erros)
+    if _horarios:
+        _merge_json(os.path.join(_pasta_json, f"horarios_{ano}{mes}{dia}.json"), _horarios)
 
     return _fundos_sucesso
 

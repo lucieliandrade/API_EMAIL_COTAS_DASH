@@ -28,6 +28,23 @@ INTERVALO_MINUTOS = 2
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_oficial_IPCA.py")
+LOG_PATH = os.path.join(SCRIPT_DIR, "robo_log.txt")
+
+# Redireciona print para o arquivo de log E para o console
+class _Tee:
+    def __init__(self, *streams): self.streams = streams
+    def write(self, data):
+        for s in self.streams:
+            try: s.write(data); s.flush()
+            except: pass
+    def flush(self):
+        for s in self.streams:
+            try: s.flush()
+            except: pass
+
+_log_file = open(LOG_PATH, 'a', encoding='utf-8', buffering=1)
+sys.stdout = _Tee(sys.__stdout__, _log_file)
+sys.stderr = _Tee(sys.__stderr__, _log_file)
 
 
 ################################## LEITURA DE EMAILS DO OUTLOOK ##################################

@@ -2004,7 +2004,9 @@ def _enviar_ou_exibir(email):
     import re
     campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
     enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
-    if enderecos and all(e.lower().endswith('@capitaniainvestimentos.com.br') for e in enderecos):
+    dominios_internos = ('@capitaniainvestimentos.com.br', '@capitania.net')
+    if enderecos and all(e.lower().endswith(dominios_internos) for e in enderecos):
+        email.Subject = f"{email.Subject} [INTERNO]"
         email.Send()
     else:
         email.Display()

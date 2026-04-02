@@ -11,6 +11,7 @@ TIPO_FUNDOS = r"X:\BDM\Novo Modelo de Carteiras\Tipo_Fundos.xlsx"
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
+ROBO_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robo_log.txt")
 
 st.set_page_config(page_title="Mailers · Cotas Diárias", layout="wide", page_icon="📬")
 
@@ -41,31 +42,55 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 /* Day cards */
 .day-card {
     background: white;
-    border-radius: 10px;
-    padding: 14px 16px;
-    border: 1.5px solid #e8edf5;
-    text-align: center;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    transition: border-color .2s;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    transition: transform .15s, box-shadow .15s;
+    position: relative;
 }
-.day-card.hoje { border-color: #1C57A8; box-shadow: 0 2px 10px rgba(28,87,168,0.15); }
-.day-card.futuro { opacity: .45; }
-.day-name  { font-size: 12px; font-weight: 600; color: #6b7a99; text-transform: uppercase; letter-spacing: .05em; }
-.day-date  { font-size: 20px; font-weight: 700; color: #1a2540; margin: 2px 0 8px; }
-.day-count { font-size: 13px; color: #444; margin-bottom: 8px; }
-.day-count span { font-weight: 700; font-size: 16px; }
-.day-count .total { color: #888; }
+.day-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.11); }
+.day-card.hoje  { box-shadow: 0 4px 20px rgba(28,87,168,0.18); }
+.day-card.futuro { opacity: .5; }
 
-.progress-bg { background: #e8edf5; border-radius: 99px; height: 7px; overflow: hidden; }
-.progress-fill { height: 7px; border-radius: 99px; transition: width .4s ease; }
-.progress-ok   { background: linear-gradient(90deg,#28a745,#5cb85c); }
-.progress-pend { background: linear-gradient(90deg,#e8a000,#ffc107); }
-.progress-zero { background: #dc3545; }
+.card-accent {
+    height: 5px;
+    width: 100%;
+    background: #e8edf5;
+}
+.card-accent.ok   { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.card-accent.pend { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.card-accent.hoje-pend { background: linear-gradient(90deg, #1C57A8, #2e7dd1); }
+.card-accent.zero { background: linear-gradient(90deg, #ef4444, #dc2626); }
+.card-accent.fut  { background: #e8edf5; }
 
-.badge-ok   { background:#d4edda; color:#155724; border-radius:99px; padding:2px 10px; font-size:11px; font-weight:600; }
-.badge-pend { background:#fff3cd; color:#856404; border-radius:99px; padding:2px 10px; font-size:11px; font-weight:600; }
-.badge-zero { background:#f8d7da; color:#721c24; border-radius:99px; padding:2px 10px; font-size:11px; font-weight:600; }
-.badge-fut  { background:#e8edf5; color:#6b7a99; border-radius:99px; padding:2px 10px; font-size:11px; font-weight:600; }
+.card-inner { padding: 16px 14px 14px; text-align: center; }
+
+.day-name { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
+.day-date { font-size: 26px; font-weight: 800; color: #1a2540; margin: 4px 0 2px; line-height: 1; }
+.day-date.hoje-color { color: #1C57A8; }
+
+.day-pct  { font-size: 13px; font-weight: 700; color: #64748b; margin-bottom: 10px; }
+
+.progress-bg   { background: #f1f5f9; border-radius: 99px; height: 6px; overflow: hidden; margin-bottom: 12px; }
+.progress-fill { height: 6px; border-radius: 99px; transition: width .5s ease; }
+.progress-ok   { background: linear-gradient(90deg,#22c55e,#16a34a); }
+.progress-pend { background: linear-gradient(90deg,#f59e0b,#d97706); }
+.progress-hoje { background: linear-gradient(90deg,#1C57A8,#2e7dd1); }
+.progress-zero { background: #ef4444; }
+
+.status-pill {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+.pill-ok   { background:#dcfce7; color:#15803d; }
+.pill-pend { background:#fef3c7; color:#92400e; }
+.pill-hoje { background:#dbeafe; color:#1e40af; }
+.pill-zero { background:#fee2e2; color:#991b1b; }
+.pill-fut  { background:#f1f5f9; color:#94a3b8; }
 
 /* Filters */
 .filter-bar {
@@ -160,6 +185,43 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+# ── STATUS DO ROBÔ ───────────────────────────────────────────────────────────
+def get_robo_status():
+    if not os.path.exists(ROBO_LOG):
+        return "desconhecido", "—", "#888"
+    try:
+        with open(ROBO_LOG, "r", encoding="utf-8", errors="ignore") as f:
+            conteudo = f.read()
+        import re
+        timestamps = re.findall(r'\[(\d{2}:\d{2}:\d{2})\]', conteudo)
+        if not timestamps:
+            return "desconhecido", "—", "#888"
+        ultimo = timestamps[-1]
+        h, m, s = map(int, ultimo.split(":"))
+        ultima_dt = today.replace(hour=h, minute=m, second=s, microsecond=0)
+        diff = (today - ultima_dt).total_seconds()
+        if diff < 0:
+            diff += 86400
+        if diff <= 300:   # até 5 min
+            return "Ativo", ultimo, "#28a745"
+        elif diff <= 600:
+            return "Lento", ultimo, "#ffc107"
+        else:
+            return "Parado", ultimo, "#dc3545"
+    except Exception:
+        return "desconhecido", "—", "#888"
+
+robo_estado, robo_ultima, robo_cor = get_robo_status()
+st.markdown(f"""
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+  <div style="width:11px; height:11px; border-radius:50%; background:{robo_cor}; box-shadow:0 0 6px {robo_cor};"></div>
+  <span style="font-size:13px; color:#444; font-weight:500;">
+    Robô: <strong style="color:{robo_cor}">{robo_estado}</strong>
+    &nbsp;·&nbsp; Última verificação: <strong>{robo_ultima}</strong>
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
 # ── NAVEGAÇÃO ────────────────────────────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 3, 1.2, 1.2])
 with c1:
@@ -191,18 +253,29 @@ def ref_de(d: datetime) -> datetime:
         return d - timedelta(days=3)   # segunda → sexta anterior
     return d - timedelta(days=1)
 
-status = {}
+status   = {}
+erros    = {}
+horarios = {}
+
 for d in dias:
-    d_str  = d.strftime("%Y%m%d")
-    d_ref  = ref_de(d)
-    path   = os.path.join(JSON_DIR, f"processados_{d_ref.strftime('%Y%m%d')}.json")
+    d_str = d.strftime("%Y%m%d")
+    d_ref = ref_de(d).strftime("%Y%m%d")
+
+    def _load(prefix):
+        path = os.path.join(JSON_DIR, f"{prefix}_{d_ref}.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+
     if d.date() > today.date():
         status[d_str] = None
-    elif os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            status[d_str] = set(json.load(f))
     else:
-        status[d_str] = set()
+        proc = _load("processados")
+        status[d_str] = set(proc) if isinstance(proc, list) else set(proc.keys())
+
+    erros[d_str]    = _load("erros")
+    horarios[d_str] = _load("horarios")
 
 total = len(fundos)
 
@@ -218,40 +291,44 @@ for i, d in enumerate(dias):
 
     with cols_cards[i]:
         if futuro:
-            pct, badge = 0, "badge-fut"
-            count_html = "<span style='color:#bbb'>—</span>"
+            pct        = 0
+            accent     = "fut"
             bar_class  = ""
+            pill_class = "pill-fut"
+            pill_label = "Aguardando"
+            pct_label  = "—"
         else:
             env = sum(1 for f in fundos if f in status[d_str])
             pct = int(env / total * 100) if total else 0
-            count_html = f"<span>{env}</span> <span class='total'>/ {total}</span>"
+            pct_label = f"{env} / {total}"
             if env == total:
-                badge, bar_class = "badge-ok", "progress-ok"
+                accent, bar_class, pill_class = "ok", "progress-ok", "pill-ok"
+                pill_label = "Completo"
+            elif env > 0 and e_hoje:
+                accent, bar_class, pill_class = "hoje-pend", "progress-hoje", "pill-hoje"
+                pill_label = f"{total - env} pendentes"
             elif env > 0:
-                badge, bar_class = "badge-pend", "progress-pend"
+                accent, bar_class, pill_class = "pend", "progress-pend", "pill-pend"
+                pill_label = f"{total - env} pendentes"
             else:
-                badge, bar_class = "badge-zero", "progress-zero"
+                accent, bar_class, pill_class = "zero", "progress-zero", "pill-zero"
+                pill_label = "Nenhum enviado"
 
-        card_class = "day-card hoje" if e_hoje else ("day-card futuro" if futuro else "day-card")
-
-        if futuro:
-            badge_label = "Aguardando"
-        elif env == total:
-            badge_label = "Completo"
-        elif env > 0:
-            badge_label = f"{total - env} pendentes"
-        else:
-            badge_label = "Nenhum enviado"
+        card_class  = "day-card hoje" if e_hoje else ("day-card futuro" if futuro else "day-card")
+        date_class  = "day-date hoje-color" if e_hoje else "day-date"
 
         st.markdown(f"""
         <div class="{card_class}">
-          <div class="day-name">{DIAS_PT[i]}</div>
-          <div class="day-date">{d.strftime('%d/%m')}</div>
-          <div class="day-count">{count_html}</div>
-          <div class="progress-bg">
-            <div class="progress-fill {bar_class}" style="width:{pct}%"></div>
+          <div class="card-accent {accent}"></div>
+          <div class="card-inner">
+            <div class="day-name">{DIAS_PT[i]}</div>
+            <div class="{date_class}">{d.strftime('%d/%m')}</div>
+            <div class="day-pct">{pct_label}</div>
+            <div class="progress-bg">
+              <div class="progress-fill {bar_class}" style="width:{pct}%"></div>
+            </div>
+            <span class="status-pill {pill_class}">{pill_label}</span>
           </div>
-          <div style="margin-top:8px"><span class="{badge}">{badge_label}</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -297,9 +374,11 @@ for fundo in fundos_filtrados:
         if status[d_str] is None:
             linha[col] = "·"
         elif fundo in status[d_str]:
-            linha[col] = "✅"
+            hora = horarios[d_str].get(fundo, "")
+            linha[col] = f"✅ {hora}" if hora else "✅"
         else:
-            linha[col] = "❌"
+            motivo = erros[d_str].get(fundo, "")
+            linha[col] = f"❌ {motivo}" if motivo else "❌"
     linhas.append(linha)
 
 df_tab = pd.DataFrame(linhas).set_index("Fundo") if linhas else pd.DataFrame()
@@ -308,10 +387,11 @@ if df_tab.empty:
     st.info("Nenhum fundo encontrado com os filtros selecionados.")
 else:
     def colorir(val):
-        if val == "✅":
-            return "background-color:#d4edda; color:#155724; text-align:center; font-size:15px; font-weight:600"
-        elif val == "❌":
-            return "background-color:#f8d7da; color:#721c24; text-align:center; font-size:15px"
+        v = str(val)
+        if v.startswith("✅"):
+            return "background-color:#d4edda; color:#155724; text-align:center; font-size:13px; font-weight:600"
+        elif v.startswith("❌"):
+            return "background-color:#f8d7da; color:#721c24; text-align:center; font-size:12px"
         return "background-color:#f2f4f8; color:#ccc; text-align:center"
 
     hoje_col = f"{DIAS_ABR[today.weekday()]}<br>{today.strftime('%d/%m')}"
@@ -340,7 +420,12 @@ else:
 
     altura = min(80 + len(fundos_filtrados) * 36, 850)
     st.markdown(f"**{len(fundos_filtrados)} fundos** exibidos", unsafe_allow_html=False)
-    st.dataframe(styled, use_container_width=True, height=altura)
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        height=altura,
+        column_config={"Fundo": st.column_config.TextColumn("Fundo", width=220)}
+    )
 
 
 # ── PENDENTES HOJE ────────────────────────────────────────────────────────────
