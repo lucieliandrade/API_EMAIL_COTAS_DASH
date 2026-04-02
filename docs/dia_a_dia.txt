@@ -1,0 +1,18 @@
+DIA A DIA - SISTEMA MAILERS COTAS
+================================================
+
+Apenas os arquivos NA RAIZ da pasta são usados no dia a dia:
+
+  mailer_robo.py          → inicia automático no login (via mailer_robo.bat no Startup)
+  mailer_v_oficial_IPCA.py → chamado pelo robô para gerar e enviar os mailers
+  mailer_v_auto.py        → chamado pelo robô (mesma função, versão alternativa)
+  status_mailers.py       → dashboard de cotas (porta 8501) → http://192.168.3.78:8501
+  rotina_diaria.py        → checklist de rotina diária (porta 8502)
+
+================================================
+PASTAS:
+================================================
+
+  docs/     → conversas e documentação
+  versoes/  → backups e versões anteriores (não usar no dia a dia)
+  _arquivo/ → pastas antigas (não usar no dia a dia)
