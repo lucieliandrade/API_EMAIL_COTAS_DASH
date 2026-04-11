@@ -21,3 +21,7 @@ estava  no z/
 # Sensiveis
 .env
 *.env
+
+# Logs runtime
+robo_log.txt
+streamlit_log.txt
