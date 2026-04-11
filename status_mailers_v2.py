@@ -489,7 +489,7 @@ else:
 
     styled = (
         df_tab.style
-        .applymap(colorir)
+        .map(colorir)
         .apply(destacar_hoje, axis=0)
         .set_table_styles([
             {"selector": "thead th", "props": [
@@ -508,7 +508,7 @@ else:
     st.markdown(f"**{len(fundos_filtrados)} fundos** exibidos", unsafe_allow_html=False)
     st.dataframe(
         styled,
-        use_container_width=True,
+        width="stretch",
         height=altura,
         column_config={"Fundo": st.column_config.TextColumn("Fundo", width=220)}
     )
