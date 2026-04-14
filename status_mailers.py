@@ -200,12 +200,17 @@ div[data-testid="column"] button {
 def get_fundos():
     df = pd.read_excel(TIPO_FUNDOS, usecols="A,E,F,I,J,K,L")
     df = df[df["Encerrado"].isna() & df["modelo_mailer"].notna()].copy()
-    df = df[df["fundo"] != "PETROS RFCP"]  # envio manual, nunca via codigo
+    df = df[~df["fundo"].isin(["PETROS RFCP"])]  # manual, nunca via codigo
     df["fundo"] = df["fundo"].replace("CAPITANIA FCOPEL", "FCopel")
     df["ADM"] = df["ADM"].fillna("Outro")
     df["Tipo"] = "Auto"
-    # Fundos de envio manual - aparecem no dash para acompanhar pendencia
-    manuais = pd.DataFrame([
+    # Site com template: robo gera rascunho, dash mostra como Site
+    fundos_site = ["BNYCL12879", "CSHG MAGIS II", "BNY12748", "BNYCL12975",
+                   "CAPIT D INC FIC", "PORTFOLIO FIDC", "CAPITANIA PREV BP",
+                   "CAPITANIA YIELD 120", "INFRA ADV CLA", "XP INFRA90"]
+    df.loc[df["fundo"].isin(fundos_site), "Tipo"] = "Site"
+    # Fundos de envio manual e Site sem template
+    extras = pd.DataFrame([
         {"fundo": "FCopel",          "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "FCopel_Imob",     "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "Sabesprev",       "ADM": "Itau",     "Tipo": "Manual"},
@@ -215,8 +220,13 @@ def get_fundos():
         {"fundo": "OPOR IMOB SUBCLA","ADM": "XP",       "Tipo": "Manual"},
         {"fundo": "OPOR IMOB SUBCLB","ADM": "XP",       "Tipo": "Manual"},
         {"fundo": "OPOR IMOB SUBCLC","ADM": "XP",       "Tipo": "Manual"},
+        {"fundo": "CAPIT REIT FI",   "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT MULTIPREV", "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT PREMIUM",   "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT PREV FDR",  "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPITANIA TOP",   "ADM": "BNYM",     "Tipo": "Site"},
     ])
-    df = pd.concat([df[["fundo", "ADM", "Tipo"]], manuais], ignore_index=True)
+    df = pd.concat([df[["fundo", "ADM", "Tipo"]], extras], ignore_index=True)
     df = df.drop_duplicates(subset="fundo")
     return df.sort_values("fundo").reset_index(drop=True)
 
@@ -376,34 +386,22 @@ for d in dias:
                 atrasado   = dt_criacao.date() > d.date()
                 ts_dia[nome_curto] = {"dt": dt_criacao, "atrasado": atrasado}
 
-        # Escaneia caixa de entrada do Outlook para fundos manuais (so dia atual)
-        if d.date() == today.date():
-            try:
-                outlook = __import__('win32com.client', fromlist=['Dispatch']).Dispatch('Outlook.Application')
-                ns = outlook.GetNamespace("MAPI")
-                inbox = ns.GetDefaultFolder(6)
-                msgs = inbox.Items
-                msgs.Sort("[ReceivedTime]", True)
-                for msg in msgs:
-                    try:
-                        if msg.ReceivedTime.date() < today:
-                            break
-                        if msg.ReceivedTime.date() != today:
-                            continue
-                        subj = str(msg.Subject)
-                        if 'COTA' not in subj.upper():
-                            continue
-                        for nome_curto, mapa in MANUAIS_MAPA.items():
-                            if nome_curto in processados:
-                                continue
-                            if mapa["pdf"].upper() in subj.upper():
-                                processados.add(nome_curto)
-                                dt_criacao = msg.ReceivedTime
-                                ts_dia[nome_curto] = {"dt": datetime(dt_criacao.year, dt_criacao.month, dt_criacao.day, dt_criacao.hour, dt_criacao.minute), "atrasado": False}
-                    except:
-                        continue
-            except:
-                pass
+        # Escaneia aprovacoes e manuais via JSON (gerado por scan_outlook.py)
+        aprovados_path = os.path.join(JSON_DIR, f"aprovados_{d_ref}.json")
+        if os.path.exists(aprovados_path):
+            with open(aprovados_path, "r", encoding="utf-8") as _f:
+                dados_outlook = json.load(_f)
+            # Site: fundos aprovados
+            fundos_site = set(fundo_df.loc[fundo_df["Tipo"] == "Site", "fundo"].tolist())
+            for fa in dados_outlook.get("site", []):
+                if fa in fundos_site and fa not in processados:
+                    processados.add(fa)
+                    ts_dia[fa] = {"dt": datetime.now(), "atrasado": False}
+            # Manuais: fundos com email COTA DIARIA
+            for nome_curto in dados_outlook.get("manual", []):
+                if nome_curto not in processados:
+                    processados.add(nome_curto)
+                    ts_dia[nome_curto] = {"dt": datetime.now(), "atrasado": False}
 
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
