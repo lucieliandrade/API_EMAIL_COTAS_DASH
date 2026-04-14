@@ -1,3 +1,4 @@
+
 import pandas as pd
 from datetime import datetime
 import pyodbc
@@ -6,9 +7,11 @@ import win32com.client as win32
 # import requests
 import openpyxl
 # from bs4 import BeautifulSoup
-import sys
+import tkinter as tk
+import subprocess
 import os
-import json as json_lib
+import sys
+import json
 from pathlib import Path
 from msoffice2pdf import convert
 from selenium import webdriver
@@ -143,20 +146,12 @@ fundo_bench  = infos_bench(fundo_infos)
 # ano, mês e dia de D-1 
 
 hoje = datetime.today().strftime(format='%Y-%m-%d')
-dias_uteis = pd.read_excel(r'X:\Leonardo Salles\Gestão\Relatorio\D_Uteis.xlsx')
+dias_uteis = pd.read_excel('X:\\Leonardo Salles\\Gestão\Relatorio\\D_Uteis.xlsx')
 dmenos1 = dias_uteis[dias_uteis['Dias Uteis'] < hoje]['Dias Uteis'].iloc[-1]
 
 ano = dmenos1[:4]
 mes = dmenos1[5:7]
 dia = dmenos1[-2:]
-
-# retorna D-X
-def dmenos(dus):
-
-    # Usar dmenos1 (data selecionada) ao invés de hoje
-    return dias_uteis[dias_uteis['Dias Uteis'] < dmenos1]['Dias Uteis'].iloc[-dus]
-
-###################### SELEÇÃO DO DIA DE REFERÊNCIA (VIA ARGUMENTOS) ######################
 
 # Ler argumentos: --data YYYY-MM-DD --fundos "FUNDO1,FUNDO2" --resultado caminho.json
 _arg_data = None
@@ -171,30 +166,27 @@ for i, arg in enumerate(sys.argv[1:], 1):
     elif arg == '--resultado' and i < len(sys.argv) - 1:
         _arg_resultado = sys.argv[i + 1]
 
-def converter_data(data_str):
-    """Converte data de DD/MM/YYYY para YYYY-MM-DD"""
-    if '/' in data_str:
-        partes = data_str.split('/')
-        if len(partes) == 3:
-            return f"{partes[2]}-{partes[1].zfill(2)}-{partes[0].zfill(2)}"
-    return data_str
-
 if _arg_data:
-    data_formatada = converter_data(_arg_data)
-    if data_formatada in dias_uteis['Dias Uteis'].values:
-        dmenos1 = data_formatada
-        print(f"Data de referencia (via argumento): {data_formatada}")
+    data_fmt = _arg_data
+    if '/' in data_fmt:
+        partes = data_fmt.split('/')
+        data_fmt = f"{partes[2]}-{partes[1].zfill(2)}-{partes[0].zfill(2)}"
+    if data_fmt in dias_uteis['Dias Uteis'].values:
+        dmenos1 = data_fmt
+        ano = dmenos1[:4]
+        mes = dmenos1[5:7]
+        dia = dmenos1[-2:]
+        print(f"Data de referencia (via argumento): {dmenos1}")
     else:
-        print(f"ERRO: Data {data_formatada} nao e dia util.")
+        print(f"ERRO: Data {data_fmt} nao e dia util.")
         sys.exit(1)
-else:
-    print(f"Usando D-1: {dmenos1}")
 
-ano = dmenos1[:4]
-mes = dmenos1[5:7]
-dia = dmenos1[-2:]
+# retorna D-X
+def dmenos(dus):
 
-print(f"Processando dados de: {dia}/{mes}/{ano}")
+    hoje = datetime.today().strftime(format='%Y-%m-%d')
+    
+    return dias_uteis[dias_uteis['Dias Uteis'] < hoje]['Dias Uteis'].iloc[-dus]
 
 # fechamento
 d_corte = datetime.strptime(dmenos1,'%Y-%m-%d').replace(day=1).strftime(format='%Y-%m-%d')
@@ -318,8 +310,8 @@ def cota_carteira(fundo_):
     elif fundo_ in fundos_itau and fundo_ not in cart_itau_sem_cdi:
 
         # Carrega a planilha em um objeto DataFrame do pandas
-        planilha1 = pd.read_excel(f"X:\\#CapitaniaRFE\\Operational\\BatimentoCotas\\Carteiras_Intrag\\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Patrimonio_Cotas', nrows=2, usecols='A:M')
-        planilha2 = pd.read_excel(f"X:\\#CapitaniaRFE\\Operational\\BatimentoCotas\\Carteiras_Intrag\\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Rentabilidade', nrows=3, usecols='C:G')
+        planilha1 = pd.read_excel(f"X:\#CapitaniaRFE\Operational\BatimentoCotas\Carteiras_Intrag\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Patrimonio_Cotas', nrows=2, usecols='A:M')
+        planilha2 = pd.read_excel(f"X:\#CapitaniaRFE\Operational\BatimentoCotas\Carteiras_Intrag\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Rentabilidade', nrows=3, usecols='C:G')
 
 
         valor_cota = planilha1.iloc[0,12]
@@ -355,8 +347,8 @@ def cota_carteira(fundo_):
     elif fundo_ in cart_itau_sem_cdi:
 
         # Carrega a planilha em um objeto DataFrame do pandas
-        planilha1 = pd.read_excel(f"X:\\#CapitaniaRFE\\Operational\\BatimentoCotas\\Carteiras_Intrag\\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Patrimonio_Cotas', nrows=2, usecols='A:M')
-        planilha2 = pd.read_excel(f"X:\\#CapitaniaRFE\\Operational\\BatimentoCotas\\Carteiras_Intrag\\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Rentabilidade', nrows=3, usecols='C:G')
+        planilha1 = pd.read_excel(f"X:\#CapitaniaRFE\Operational\BatimentoCotas\Carteiras_Intrag\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Patrimonio_Cotas', nrows=2, usecols='A:M')
+        planilha2 = pd.read_excel(f"X:\#CapitaniaRFE\Operational\BatimentoCotas\Carteiras_Intrag\{fundo_}_PosicaoDiaria{ano}{mes}{dia}.xlsx", sheet_name='Rentabilidade', nrows=3, usecols='C:G')
 
 
         valor_cota = planilha1.iloc[0,12]
@@ -474,12 +466,12 @@ new_imab.rename(columns={'data_referencia':'Data', 'numero_indice':'Acum'}, inpl
 new_imab5 = imas.loc[imas['indice'] == 'IMA-B 5', ['data_referencia', 'numero_indice']]
 new_imab5.rename(columns={'data_referencia':'Data', 'numero_indice':'Acum'}, inplace=True)
 
-old_imab = pd.read_excel("Z:\\Relações com Investidores - NOVO\\codigos\\cotas\\indices\\IMAB-HISTORICO.xls", usecols='B:C')
+old_imab = pd.read_excel("Z:\Relações com Investidores - NOVO\codigos\indices\IMAB-HISTORICO.xls", usecols='B:C')
 old_imab['Data de Referência'] = pd.to_datetime(old_imab['Data de Referência'])
 old_imab['Data de Referência'] = old_imab['Data de Referência'].dt.strftime('%Y-%m-%d')
 old_imab.rename(columns={'Data de Referência':'Data', 'Número Índice':'Acum'}, inplace=True)
 
-old_imab5 = pd.read_excel("Z:\\Relações com Investidores - NOVO\\codigos\\cotas\\indices\\IMAB5-HISTORICO.xls", usecols='B:C')
+old_imab5 = pd.read_excel("Z:\Relações com Investidores - NOVO\codigos\indices\IMAB5-HISTORICO.xls", usecols='B:C')
 old_imab5['Data de Referência'] = pd.to_datetime(old_imab5['Data de Referência'])
 old_imab5['Data de Referência'] = old_imab5['Data de Referência'].dt.strftime('%Y-%m-%d')
 old_imab5.rename(columns={'Data de Referência':'Data', 'Número Índice':'Acum'}, inplace=True)
@@ -499,7 +491,7 @@ ipca_base['data'] = pd.to_datetime(ipca_base['data'])
 ipca_base['data'] = ipca_base['data'].dt.strftime('%Y-%m-%d')
 ipca_base = ipca_base.loc[ipca_base['indexador']=='IPCA', ['data', 'inf_mensal']]
 
-dates = dias_uteis[(dias_uteis['Dias Uteis'] <= dmenos1) & (dias_uteis['Dias Uteis'] >= ipca_base.iloc[0,0])][['Dias Uteis']]
+dates = dias_uteis[(dias_uteis['Dias Uteis'] < hoje) & (dias_uteis['Dias Uteis'] >= ipca_base.iloc[0,0])][['Dias Uteis']]
 
 ipca_base['mes'] = ipca_base['data'].str[:7]
 dates['mes'] = dates['Dias Uteis'].str[:7]
@@ -526,19 +518,14 @@ m0_extenso = {
 # retorna a última projeção (q no início do mês ainda não consta na tabela SQL do Picci)
 
 
-def web_scraping_anbima(mes_busca=None):
+def web_scraping_anbima():
     """
     Função que realiza web scraping dos dados de projeção de inflação da ANBIMA.
     Extrai dados da coluna 'Projeção (%)' de duas tabelas específicas e retorna
-    os dados da tabela apropriada baseado no mês a buscar.
-    
-    Args:
-        mes_busca: Mês a buscar em formato numérico (ex: '02'). Se None, usa mes global.
+    os dados da tabela apropriada baseado no mês atual.
     
     Lógica condicional:
-    - SE o mês a buscar estiver contido nos cabeçalhos 'th' da primeira tabela,
-      ENTÃO retorna os dados da primeira tabela
-    - SENÃO retorna os dados da segunda tabela
+    - SE o mês atual (m0_extenso[int(mes)]) estiver contido nos cabeçalhos 'th' da primeira tabela,
       ENTÃO retorna os dados da primeira tabela
     - SENÃO retorna os dados da segunda tabela
     
@@ -854,13 +841,11 @@ def web_scraping_anbima(mes_busca=None):
         # Extrair cabeçalhos da primeira tabela
         table1_headers = extract_table_headers(table1_xpath)
         
-        # Obter o mês a buscar em formato extenso
+        # Obter o mês atual em formato extenso
         # Importar as variáveis necessárias do escopo global
         global mes, m0_extenso
-        if mes_busca is None:
-            mes_busca = mes
-        mes_atual = m0_extenso[int(mes_busca)]
-        # print(f"Mês a buscar: {mes_atual}")
+        mes_atual = m0_extenso[int(mes)]
+        # print(f"Mês atual: {mes_atual}")
         
         # Verificar se o mês atual está contido em algum cabeçalho da primeira tabela
         mes_encontrado_tabela1 = False
@@ -889,37 +874,23 @@ def web_scraping_anbima(mes_busca=None):
             driver.quit()
 
 # Função que mantém a interface original mas usa Selenium
-def projecoes(mes_busca=None):
+def projecoes():
     """
     Função que mantém a mesma interface da função original,
     mas usa Selenium internamente para extrair os dados.
-    
-    Args:
-        mes_busca: Mês a buscar em formato numérico (ex: '02'). Se None, usa mes global.
     """
-    return web_scraping_anbima(mes_busca)
+    return web_scraping_anbima()
 
 
-def ipca1ou2(mes_busca=None):
-    try:
-        proj = projecoes(mes_busca)
-        
-        # Verificar se a lista tem elementos suficientes
-        if not proj or len(proj) < 3:
-            print(f"⚠ Aviso: Dados de projeção IPCA insuficientes para mês {mes_busca}. Retornando None")
-            return None
-        
-        if proj[2] == '-':
-            resultado =  'Usar IPCA 1'
-            return float(proj[int(resultado[-1])].replace(",", "."))
-        else: 
-            resultado =  'Usar IPCA 2'
-            return float(proj[int(resultado[-1])].replace(",", "."))
-            
-    except Exception as e:
-        print(f"⚠ Erro ao obter projeção IPCA: {e}")
-        print(f"  Retornando valor padrão de 0.5%")
-        return 0.5  # Valor padrão em caso de erro
+def ipca1ou2():
+
+    if projecoes()[2] == '-':
+        resultado =  'Usar IPCA 1'
+        return float(projecoes()[int(resultado[-1])].replace(",", "."))
+
+    else: 
+        resultado =  'Usar IPCA 2'
+        return float(projecoes()[int(resultado[-1])].replace(",", "."))
 
 
 
@@ -937,6 +908,7 @@ proj_ipca = pd.read_sql(sql=query, con=conn)
 proj_ipca['data'] = pd.to_datetime(proj_ipca['data'])
 proj_ipca['data'] = proj_ipca['data'].dt.strftime('%Y-%m-%d')
 
+# Adicionar valor hardcoded para fevereiro 2026 = 0.44%
 if len(meses_previsao) > 0:
     mes_ultimo = meses_previsao[-1]
     # Extrair apenas o mês se for formato "YYYY-MM"
@@ -944,27 +916,27 @@ if len(meses_previsao) > 0:
         mes_ultimo_num = str(mes_ultimo).split('-')[-1]
     else:
         mes_ultimo_num = str(mes_ultimo).zfill(2)
-
+    
     # Se for fevereiro (02), usar o IPCA efetivo de janeiro
     if mes_ultimo_num == '02':
         # Buscar IPCA efetivo de janeiro no ipca_base
         ipca_efetivo_janeiro = ipca_base.loc[ipca_base['data'].str.contains('-01-'), 'inf_mensal'].values
-
+        
         if len(ipca_efetivo_janeiro) > 0:
             valor_fevereiro = ipca_efetivo_janeiro[-1]
-            print(f"Usando IPCA efetivo de Janeiro para Fevereiro = {valor_fevereiro}%")
+            print(f"Usando IPCA efetivo de Janeiro 2026 para Fevereiro = {valor_fevereiro}%")
         else:
             valor_fevereiro = 0.33
             print(f"IPCA efetivo de janeiro não encontrado. Usando projeção = {valor_fevereiro}%")
-
+        
         linha_add = pd.DataFrame({'data':[dmenos1] ,'mes_coleta' : [f'{m0_extenso[int(mes_ultimo_num)]} de {ano}'] ,'projecao': [valor_fevereiro],'validade': [dmenos1] ,'tipo': ['linha adicionada']})
         proj_ipca = pd.concat([proj_ipca, linha_add], ignore_index=True)
     elif len(proj_ipca.loc[proj_ipca['data'].str.contains(f'-{mes_ultimo_num}-')]) == 0:
         # Se não for fevereiro e também não existir no banco, busca no site
         linha_add = pd.DataFrame({'data':[dmenos1] ,'mes_coleta' : [f'{m0_extenso[int(mes_ultimo_num)]} de {ano}'] ,'projecao': [ipca1ou2()],'validade': [dmenos1] ,'tipo': ['linha adicionada']})
         proj_ipca = pd.concat([proj_ipca, linha_add], ignore_index=True)
-
-#pegando as projeções para os meses de "meses_previsao"
+    
+#pegando as projeções para os meses de "meses_previsao" 
 taxas = []
 for month in meses_previsao:
     # Extrair apenas o mês se for formato "YYYY-MM"
@@ -972,7 +944,7 @@ for month in meses_previsao:
         mes_num = str(month).split('-')[-1]
     else:
         mes_num = str(month).zfill(2)
-
+    
     valores = proj_ipca.loc[proj_ipca['data'].str.contains(f'-{mes_num}-'), 'projecao'].values
     if len(valores) > 0:
         taxas.append(valores[-1])
@@ -991,9 +963,7 @@ for m,t in zip(meses_previsao, taxas):
 # alimentando o df ipca com as taxas projedatas de IPCA
 for m in meses_previsao:
 
-    ipca.loc[ipca['mes']==m, 'inf_mensal'] = mes_taxa[m]
-else:
-    print("Processando data historica - nao ha necessidade de projecoes IPCA")
+    ipca.loc[ipca['mes']==m, 'inf_mensal'] = mes_taxa[m] 
 
 
 # selecionando somente as colunas desejadas
@@ -1122,9 +1092,7 @@ ifix['Data'] = ifix['Data'].dt.strftime('%Y-%m-%d')
 def bench_du(df_bench, num_dus):
 
     try:
-        # Filtrar benchmark até a data selecionada (dmenos1)
-        df_filtrado = df_bench[df_bench['Data'] <= dmenos1]
-        return df_filtrado.iloc[-1, -1] / df_filtrado.iloc[-1 - num_dus, -1] - 1
+        return df_bench.iloc[-1, -1] / df_bench.iloc[-1 - num_dus, -1] - 1
     except:
         return np.nan
 
@@ -1153,7 +1121,7 @@ cotas_cap_base['Data'] = pd.to_datetime(cotas_cap_base['Data'])
 cotas_cap_base['Data'] = cotas_cap_base['Data'].dt.strftime('%Y-%m-%d')
 
 # separando esse DataFrame para usar na função de check PL
-fundo_pl = cotas_cap_base[['Data', 'Fundo','PL']]
+fundo_pl = cotas_cap_base[['Fundo','PL']]
 
 # comtinuando
 cotas_cap_base = cotas_cap_base[['Data', 'Fundo','Cota']]
@@ -1187,13 +1155,12 @@ cotas_cap = pd.concat([cotas_cap_base, cotas_ajustadas])
 
 def cota_base(fundo_):
 
-    # Filtrar apenas cotas até a data selecionada (dmenos1)
-    dados_mailer = cotas_cap[(cotas_cap['Fundo']== fundo_) & (cotas_cap['Data'] <= dmenos1)]
+    dados_mailer = cotas_cap[cotas_cap['Fundo']== fundo_]
     dados_fundo = {}
 
     lista_resultados = []
 
-    for d in [dmenos1, dmenos(1)]:
+    for d in [dmenos1,dmenos(2)]:
 
         resultado = dados_mailer.loc[dados_mailer['Data']==d, 'Cota'].empty
 
@@ -1217,8 +1184,8 @@ def cota_base(fundo_):
             #Dia
             dados_fundo['var_dia'] =  dados_mailer['Cota'].values[0] / dados_mailer['Cota'].values[1] - 1
             
-            # % do CDI (usar bench_du para filtrar pela data correta)
-            dados_fundo['p_cdi'] =  dados_fundo['var_dia'] / bench_du(cdi_acum, 1)
+            # % do CDI
+            dados_fundo['p_cdi'] =  dados_fundo['var_dia'] / (cdi_acum.iloc[-1,1] / cdi_acum.iloc[-2,1] - 1)
             
             #Mês
             try:
@@ -1258,8 +1225,8 @@ def cota_base(fundo_):
             
             #Dia
             dados_fundo['var_dia'] =  dados_mailer['Cota'].values[0] / dados_mailer['Cota'].values[1] - 1
-            # % do CDI dia (usar bench_du para filtrar pela data correta)
-            dados_fundo['p_cdi'] =  dados_fundo['var_dia'] / bench_du(cdi_acum, 1)
+            # % do CDI dia
+            dados_fundo['p_cdi'] =  dados_fundo['var_dia'] / (cdi_acum.iloc[-1,1] / cdi_acum.iloc[-2,1] - 1)
             
             #Mês
             try:
@@ -1309,12 +1276,11 @@ def cota_base(fundo_):
 
 def pl(fundo_):
 
-    # Filtrar apenas PL até a data selecionada (dmenos1)
-    dados_mailer = fundo_pl[(fundo_pl['Fundo']== fundo_) & (fundo_pl['Data'] <= dmenos1)]
+    dados_mailer = fundo_pl.loc[fundo_pl['Fundo']== fundo_, 'PL']
 
-    pl_hoje =  dados_mailer['PL'].values[0]
+    pl_hoje =  dados_mailer.values[0]
 
-    pl_medio = dados_mailer['PL'].iloc[0:252].mean()
+    pl_medio = dados_mailer.iloc[0:252].mean()
 
     return pd.DataFrame([pl_hoje , pl_medio])
 
@@ -1324,8 +1290,7 @@ def pl(fundo_):
 
 def fundo_du(fundo_, num_dus):
 
-    # Filtrar apenas cotas até a data selecionada (dmenos1)
-    retornos = cotas_cap.loc[(cotas_cap['Fundo']==fundo_) & (cotas_cap['Data'] <= dmenos1), ['Data','Fundo','Cota']]
+    retornos = cotas_cap.loc[cotas_cap['Fundo']==fundo_ , ['Data','Fundo','Cota']]
 
     try:
         if (retornos.iloc[0, 2] != 0) and (retornos.iloc[num_dus, 2] != 0):
@@ -1644,26 +1609,20 @@ def check_bench(fundo_):
     
     bench = retorna_bench(fundo_)
 
-    # Filtrar benchmark até a data selecionada (dmenos1)
-    bench_filtrado = bench.loc[bench.iloc[:,0] <= dmenos1]
-    
-    if len(bench_filtrado) == 0:
+    # primeira linha é da data D-1 ?
+    if bench.iloc[-1,0] == dmenos1:
+        lista_condicoes.append('ok')
+    else:
+        lista_condicoes.append('erro')
+
+    # o valor tá OK?
+    ultima_linha = bench.iloc[-1,1:]
+    na_ou_zero = (ultima_linha == 0).any() or ultima_linha.isna().any()
+
+    if na_ou_zero:
         lista_condicoes.append('erro')
     else:
-        # primeira linha é da data D-1 ou anterior?
-        if bench_filtrado.iloc[-1,0] == dmenos1:
-            lista_condicoes.append('ok')
-        else:
-            lista_condicoes.append('erro')
-
-        # o valor tá OK?
-        ultima_linha = bench_filtrado.iloc[-1,1:]
-        na_ou_zero = (ultima_linha == 0).any() or ultima_linha.isna().any()
-
-        if na_ou_zero:
-            lista_condicoes.append('erro')
-        else:
-            lista_condicoes.append('ok')
+        lista_condicoes.append('ok')
     
     return 'erro' in lista_condicoes
 
@@ -1677,17 +1636,12 @@ def check_cotas(fundo_):
     df_cotas_fundo = cotas_cap.loc[cotas_cap['Fundo']==fundo_ , ['Data','Fundo','Cota']]
     lista = []
     mensagem = None
-    
-    # Ajustar para verificar a partir da data escolhida (dmenos1)
-    # Verificar 5 dias consecutivos a partir da data de referência escolhida
-    dias_a_verificar_base = [dmenos1, dmenos(1), dmenos(2), dmenos(3), dmenos(4)]
-    
-    if cota_inicial[fundo_][0] > fechamento:
-        dias_a_verificar = dias_a_verificar_base
+    if  cota_inicial[fundo_][0] > fechamento:
+        dias_a_verificar =    [dmenos(1),dmenos(2),dmenos(3),dmenos(4),dmenos(5)]
     elif cota_inicial[fundo_][0] > ano_velho:
-        dias_a_verificar = dias_a_verificar_base + [fechamento]
+        dias_a_verificar =    [dmenos(1),dmenos(2),dmenos(3),dmenos(4),dmenos(5), fechamento]
     else:
-        dias_a_verificar = dias_a_verificar_base + [fechamento, ano_velho]
+        dias_a_verificar = [dmenos(1),dmenos(2),dmenos(3),dmenos(4),dmenos(5), fechamento, ano_velho]
 
     for data in dias_a_verificar:
         resultado = True
@@ -1725,16 +1679,15 @@ def gerador_df(fundo):
         
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(bench, 1),pos_neg(fundo_du(fundo, 1) / bench_du(bench, 1))],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo, bench,dmenos(2), dmenos(1)), pos_neg(fundo_delta(fundo, dmenos(2), dmenos(1)) / bench_delta(fundo, bench,dmenos(2), dmenos(1)))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo, bench,dmenos(3), dmenos(2)), pos_neg(fundo_delta(fundo, dmenos(3), dmenos(2)) / bench_delta(fundo, bench,dmenos(3), dmenos(2)))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo, bench,dmenos(4), dmenos(3)), pos_neg(fundo_delta(fundo, dmenos(4), dmenos(3)) / bench_delta(fundo, bench,dmenos(4), dmenos(3)))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4)))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4)))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo, bench,dmenos(6), dmenos(5)), pos_neg(fundo_delta(fundo, dmenos(6), dmenos(5)) / bench_delta(fundo, bench,dmenos(6), dmenos(5)))],    
             [mes_ano(dmenos1) , '',mtd(fundo, bench)[0], mtd(fundo, bench)[1], mtd(fundo, bench)[0]/ mtd(fundo, bench)[1]],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(bench, 21), (fundo_du(fundo, 21)) / (bench_du(bench, 21))],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(bench, 63))],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(bench, 126))],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(bench, 252))],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(bench, 504))],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, bench)[0] / ytd(fundo, bench)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1]],
@@ -1746,16 +1699,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(bench, 1), bench_du(cdi_acum, 1),pos_neg(fundo_du(fundo, 1) / bench_du(cdi_acum, 1))],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo, bench,dmenos(2), dmenos(1)), bench_delta(fundo, cdi_acum,dmenos(2), dmenos(1)),pos_neg(fundo_delta(fundo, dmenos(2), dmenos(1)) / bench_delta(fundo, cdi_acum,dmenos(2), dmenos(1)))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo, bench,dmenos(3), dmenos(2)), bench_delta(fundo, cdi_acum,dmenos(3), dmenos(2)),pos_neg(fundo_delta(fundo, dmenos(3), dmenos(2)) / bench_delta(fundo, cdi_acum,dmenos(3), dmenos(2)))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo, bench,dmenos(4), dmenos(3)), bench_delta(fundo, cdi_acum,dmenos(4), dmenos(3)),pos_neg(fundo_delta(fundo, dmenos(4), dmenos(3)) / bench_delta(fundo, cdi_acum,dmenos(4), dmenos(3)))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), bench_delta(fundo, cdi_acum,dmenos(5), dmenos(4)),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, cdi_acum,dmenos(5), dmenos(4)))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), bench_delta(fundo, cdi_acum,dmenos(5), dmenos(4)),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, cdi_acum,dmenos(5), dmenos(4)))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo, bench,dmenos(6), dmenos(5)), bench_delta(fundo, cdi_acum,dmenos(6), dmenos(5)),pos_neg(fundo_delta(fundo, dmenos(6), dmenos(5)) / bench_delta(fundo, cdi_acum,dmenos(6), dmenos(5)))],    
             [mes_ano(dmenos1), '', fundo_delta(fundo,fechamento,dmenos1), bench_delta(fundo, bench,fechamento,dmenos1), bench_delta(fundo, cdi_acum,fechamento,dmenos1),fundo_delta(fundo,fechamento,dmenos1)/ bench_delta(fundo, cdi_acum,fechamento,dmenos1)],
             ['Últimos 30 dias', '', fundo_du(fundo, 21), bench_du(bench, 21), bench_du(cdi_acum, 21),(fundo_du(fundo, 21)) / (bench_du(cdi_acum, 21))],
             ['Últimos 90 dias', '', fundo_du(fundo, 63), bench_du(bench, 63), bench_du(cdi_acum, 63), (fundo_du(fundo, 63)) / (bench_du(cdi_acum, 63))],
             ['Últimos 180 dias', '', fundo_du(fundo, 126), bench_du(bench, 126), bench_du(cdi_acum, 126), (fundo_du(fundo, 126)) / (bench_du(cdi_acum, 126))],
             ['Últimos 360 dias', '', fundo_du(fundo, 252), bench_du(bench, 252), bench_du(cdi_acum, 252),(fundo_du(fundo, 252)) / (bench_du(cdi_acum, 252))],
-            ['Últimos 720 dias', '', fundo_du(fundo, 504), bench_du(bench, 504), bench_du(cdi_acum, 504),(fundo_du(fundo, 504)) / (bench_du(cdi_acum, 504))],
             [f'Ano {int(ano)}', '', ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, cdi_acum)[1] ,ytd(fundo, bench)[0] / ytd(fundo, cdi_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, cdi_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, cdi_acum)[1]],
@@ -1768,16 +1720,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(ifix, 1)],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo,ifix,dmenos(2), dmenos(1))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo,ifix,dmenos(3), dmenos(2))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo,ifix,dmenos(4), dmenos(3))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,ifix,dmenos(5), dmenos(4))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,ifix,dmenos(5), dmenos(4))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo,ifix,dmenos(6), dmenos(5))],    
             [mes_ano(dmenos1), '',fundo_delta(fundo,fechamento,dmenos1), bench_delta(fundo,ifix,fechamento,dmenos1)],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(ifix, 21)],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(ifix, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(ifix, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(ifix, 252)],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(ifix, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, ifix)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, ifix)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, ifix)[1]],
@@ -1790,16 +1741,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(cdi_acum, 1), bench_du(bench, 1), pos_neg(fundo_du(fundo, 1) / bench_du(cdi_acum, 1)), pos_neg(fundo_du(fundo, 1) / bench_du(bench, 1))],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo,cdi_acum,dmenos(2), dmenos(1)), bench_delta(fundo, bench,dmenos(2), dmenos(1)),pos_neg(fundo_delta(fundo, dmenos(2), dmenos(1)) / bench_delta(fundo,cdi_acum,dmenos(2), dmenos(1))),pos_neg(fundo_delta(fundo, dmenos(2), dmenos(1)) / bench_delta(fundo, bench,dmenos(2), dmenos(1)))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo,cdi_acum,dmenos(3), dmenos(2)), bench_delta(fundo, bench,dmenos(3), dmenos(2)),pos_neg(fundo_delta(fundo, dmenos(3), dmenos(2)) / bench_delta(fundo,cdi_acum,dmenos(3), dmenos(2))),pos_neg(fundo_delta(fundo, dmenos(3), dmenos(2)) / bench_delta(fundo, bench,dmenos(3), dmenos(2)))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo,cdi_acum,dmenos(4), dmenos(3)), bench_delta(fundo, bench,dmenos(4), dmenos(3)),pos_neg(fundo_delta(fundo, dmenos(4), dmenos(3)) / bench_delta(fundo,cdi_acum,dmenos(4), dmenos(3))),pos_neg(fundo_delta(fundo, dmenos(4), dmenos(3)) / bench_delta(fundo, bench,dmenos(4), dmenos(3)))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4))),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4)))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4))),pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4)))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo,cdi_acum,dmenos(6), dmenos(5)), bench_delta(fundo, bench,dmenos(6), dmenos(5)),pos_neg(fundo_delta(fundo, dmenos(6), dmenos(5)) / bench_delta(fundo,cdi_acum,dmenos(6), dmenos(5))),pos_neg(fundo_delta(fundo, dmenos(6), dmenos(5)) / bench_delta(fundo, bench,dmenos(6), dmenos(5)))],    
             [mes_ano(dmenos1), '', mtd(fundo, bench)[0], mtd(fundo, cdi_acum)[1], mtd(fundo, bench)[1],mtd(fundo, cdi_acum)[0]/ mtd(fundo, cdi_acum)[1] ,mtd(fundo, bench)[0]/ mtd(fundo, bench)[1]],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(cdi_acum, 21), bench_du(bench, 21), (fundo_du(fundo, 21)) / (bench_du(cdi_acum, 21)), (fundo_du(fundo, 21)) / (bench_du(bench, 21))],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(cdi_acum, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(cdi_acum, 63)), (fundo_du(fundo, 63)) / (bench_du(bench, 63))],
             ['Últimos 180 dias' , '',fundo_du(fundo, 126), bench_du(cdi_acum, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(cdi_acum, 126)), (fundo_du(fundo, 126)) / (bench_du(bench, 126))],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(cdi_acum, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(cdi_acum, 252)), (fundo_du(fundo, 252)) / (bench_du(bench, 252))],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(cdi_acum, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(cdi_acum, 504)), (fundo_du(fundo, 504)) / (bench_du(bench, 504))],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, cdi_acum)[1], ytd(fundo, bench)[1] ,ytd(fundo, bench)[0] / ytd(fundo, cdi_acum)[1] ,ytd(fundo, bench)[0] / ytd(fundo, bench)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, cdi_acum)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, cdi_acum)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1]],
@@ -1810,16 +1760,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(cdi_acum, 1), bench_du(imab_acum, 1)],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo,cdi_acum,dmenos(2), dmenos(1)), bench_delta(fundo,imab_acum,dmenos(2), dmenos(1))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo,cdi_acum,dmenos(3), dmenos(2)), bench_delta(fundo,imab_acum,dmenos(3), dmenos(2))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo,cdi_acum,dmenos(4), dmenos(3)), bench_delta(fundo,imab_acum,dmenos(4), dmenos(3))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4)), bench_delta(fundo,imab_acum,dmenos(5), dmenos(4))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,cdi_acum,dmenos(5), dmenos(4)), bench_delta(fundo,imab_acum,dmenos(5), dmenos(4))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo,cdi_acum,dmenos(6), dmenos(5)), bench_delta(fundo,imab_acum,dmenos(6), dmenos(5))],    
             [mes_ano(dmenos1) , '',mtd(fundo, bench)[0], mtd(fundo, cdi_acum)[1], mtd(fundo, bench)[1]],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(cdi_acum, 21), bench_du(imab_acum, 21)],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(cdi_acum, 63), bench_du(imab_acum, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(cdi_acum, 126), bench_du(imab_acum, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(cdi_acum, 252), bench_du(imab_acum, 252)],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(cdi_acum, 504), bench_du(imab_acum, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, cdi_acum)[0], ytd(fundo, cdi_acum)[1], ytd(fundo, imab_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos_bench(fundo, imab_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos_bench(fundo, imab_acum)[1]],
@@ -1831,16 +1780,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(imab_acum, 1), fundo_du(fundo, 1) - bench_du(imab_acum, 1), bench_du(imab5_acum, 1), fundo_du(fundo, 1) - bench_du(imab5_acum, 1)],
-            [dmenos(1),get_cota(fundo, dmenos(1)), fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo,imab_acum,dmenos(2), dmenos(1)), fundo_delta(fundo, dmenos(2), dmenos(1))- bench_delta(fundo,imab_acum,dmenos(2), dmenos(1)),bench_delta(fundo,imab5_acum,dmenos(2), dmenos(1)), fundo_delta(fundo, dmenos(2), dmenos(1))- bench_delta(fundo,imab5_acum,dmenos(2), dmenos(1))],
             [dmenos(2),get_cota(fundo, dmenos(2)), fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo,imab_acum,dmenos(3), dmenos(2)), fundo_delta(fundo, dmenos(3), dmenos(2))- bench_delta(fundo,imab_acum,dmenos(3), dmenos(2)),bench_delta(fundo,imab5_acum,dmenos(3), dmenos(2)), fundo_delta(fundo, dmenos(3), dmenos(2))- bench_delta(fundo,imab5_acum,dmenos(3), dmenos(2))],
             [dmenos(3),get_cota(fundo, dmenos(3)), fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo,imab_acum,dmenos(4), dmenos(3)), fundo_delta(fundo, dmenos(4), dmenos(3))- bench_delta(fundo,imab_acum,dmenos(4), dmenos(3)),bench_delta(fundo,imab5_acum,dmenos(4), dmenos(3)), fundo_delta(fundo, dmenos(4), dmenos(3))- bench_delta(fundo,imab5_acum,dmenos(4), dmenos(3))],
             [dmenos(4),get_cota(fundo, dmenos(4)), fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo,imab_acum,dmenos(5), dmenos(4)), fundo_delta(fundo, dmenos(5), dmenos(4))- bench_delta(fundo,imab_acum,dmenos(5), dmenos(4)),bench_delta(fundo,imab5_acum,dmenos(5), dmenos(4)), fundo_delta(fundo, dmenos(5), dmenos(4))- bench_delta(fundo,imab5_acum,dmenos(5), dmenos(4))],
+            [dmenos(5),get_cota(fundo, dmenos(5)), fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo,imab_acum,dmenos(6), dmenos(5)), fundo_delta(fundo, dmenos(6), dmenos(5))- bench_delta(fundo,imab_acum,dmenos(6), dmenos(5)),bench_delta(fundo,imab5_acum,dmenos(6), dmenos(5)), fundo_delta(fundo, dmenos(6), dmenos(5))- bench_delta(fundo,imab5_acum,dmenos(6), dmenos(5))],
             [mes_ano(dmenos1) , '',fundo_delta(fundo,fechamento,dmenos1), bench_delta(fundo,imab_acum,fechamento,dmenos1),fundo_delta(fundo,fechamento,dmenos1)- bench_delta(fundo,imab_acum,fechamento,dmenos1), bench_delta(fundo,imab5_acum,fechamento,dmenos1), fundo_delta(fundo,fechamento,dmenos1)- bench_delta(fundo,imab5_acum,fechamento,dmenos1)],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(imab_acum, 21),fundo_du(fundo, 21)- bench_du(imab_acum, 21),bench_du(imab5_acum, 21),fundo_du(fundo, 21)-  bench_du(imab5_acum, 21)],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(imab_acum, 63),fundo_du(fundo, 63)- bench_du(imab_acum, 63),bench_du(imab5_acum, 63),fundo_du(fundo, 63)-  bench_du(imab5_acum, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(imab_acum, 126),fundo_du(fundo, 126)- bench_du(imab_acum, 126),bench_du(imab5_acum, 126),fundo_du(fundo, 126)-  bench_du(imab5_acum, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(imab_acum, 252),fundo_du(fundo, 252)- bench_du(imab_acum, 252),bench_du(imab5_acum, 252),fundo_du(fundo, 252)-  bench_du(imab5_acum, 252)],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(imab_acum, 504),fundo_du(fundo, 504)- bench_du(imab_acum, 504),bench_du(imab5_acum, 504),fundo_du(fundo, 504)-  bench_du(imab5_acum, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, imab_acum)[1],ytd(fundo, imab_acum)[0] - ytd(fundo, imab_acum)[1], ytd(fundo, imab5_acum)[1], ytd(fundo, imab5_acum)[0] - ytd(fundo, imab5_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, imab_acum)[0],ret_anos(fundo)[0]- ret_anos_bench(fundo, imab_acum)[0], ret_anos_bench(fundo, imab5_acum)[0],ret_anos(fundo)[0]- ret_anos_bench(fundo, imab5_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, imab_acum)[1],ret_anos(fundo)[1]- ret_anos_bench(fundo, imab_acum)[1], ret_anos_bench(fundo, imab5_acum)[1],ret_anos(fundo)[1]- ret_anos_bench(fundo, imab5_acum)[1]],
@@ -1853,16 +1801,15 @@ def gerador_df(fundo):
 
         dados = [
             [dmenos1,cota_base(fundo)['valor_cota'], fundo_du(fundo, 1), bench_du(bench, 1),pos_neg(fundo_du(fundo, 1) / bench_du(bench, 1)), bench_du(ifix, 1)],
-            [dmenos(1), get_cota(fundo, dmenos(1)),fundo_delta(fundo, dmenos(2), dmenos(1)), bench_delta(fundo, bench,dmenos(2), dmenos(1)), pos_neg(fundo_delta(fundo, dmenos(2), dmenos(1)) / bench_delta(fundo, bench,dmenos(2), dmenos(1))), bench_delta(fundo,ifix,dmenos(2), dmenos(1))],
             [dmenos(2), get_cota(fundo, dmenos(2)),fundo_delta(fundo, dmenos(3), dmenos(2)), bench_delta(fundo, bench,dmenos(3), dmenos(2)), pos_neg(fundo_delta(fundo, dmenos(3), dmenos(2)) / bench_delta(fundo, bench,dmenos(3), dmenos(2))), bench_delta(fundo,ifix,dmenos(3), dmenos(2))],
             [dmenos(3), get_cota(fundo, dmenos(3)),fundo_delta(fundo, dmenos(4), dmenos(3)), bench_delta(fundo, bench,dmenos(4), dmenos(3)), pos_neg(fundo_delta(fundo, dmenos(4), dmenos(3)) / bench_delta(fundo, bench,dmenos(4), dmenos(3))), bench_delta(fundo,ifix,dmenos(4), dmenos(3))],
-            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4))), bench_delta(fundo,ifix,dmenos(5), dmenos(4))],    
+            [dmenos(4), get_cota(fundo, dmenos(4)),fundo_delta(fundo, dmenos(5), dmenos(4)), bench_delta(fundo, bench,dmenos(5), dmenos(4)), pos_neg(fundo_delta(fundo, dmenos(5), dmenos(4)) / bench_delta(fundo, bench,dmenos(5), dmenos(4))), bench_delta(fundo,ifix,dmenos(5), dmenos(4))],
+            [dmenos(5), get_cota(fundo, dmenos(5)),fundo_delta(fundo, dmenos(6), dmenos(5)), bench_delta(fundo, bench,dmenos(6), dmenos(5)), pos_neg(fundo_delta(fundo, dmenos(6), dmenos(5)) / bench_delta(fundo, bench,dmenos(6), dmenos(5))), bench_delta(fundo,ifix,dmenos(6), dmenos(5))],    
             [mes_ano(dmenos1) , '',fundo_delta(fundo,fechamento,dmenos1), bench_delta(fundo, bench,fechamento,dmenos1), fundo_delta(fundo,fechamento,dmenos1)/ bench_delta(fundo, bench,fechamento,dmenos1), bench_delta(fundo,ifix,fechamento,dmenos1)],
             ['Últimos 30 dias', '',fundo_du(fundo, 21), bench_du(bench, 21), (fundo_du(fundo, 21)) / (bench_du(bench, 21)), bench_du(ifix, 21)],
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(bench, 63)), bench_du(ifix, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(bench, 126)), bench_du(ifix, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(bench, 252)),fundo_du(fundo, 252)],
-            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(bench, 504)),fundo_du(fundo, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, bench)[0] / ytd(fundo, bench)[1], ytd(fundo, ifix)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0], ret_anos_bench(fundo, ifix)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1], ret_anos_bench(fundo, ifix)[1]],
@@ -1875,23 +1822,19 @@ def gerador_df(fundo):
 
     if len(cotas) < 22:
 
-        del dados[6:11]
+        del dados[6:10]
 
     elif len(cotas) < 64:
 
-        del dados[7:11]
+        del dados[7:10]
 
     elif len(cotas) < 127:
 
-        del dados[8:11]
+        del dados[8:10]
 
     elif len(cotas) < 253:
 
-        del dados[9:11]
-
-    elif len(cotas) < 505:
-
-        del dados[10]
+        del dados[9]
 
 
     if np.isnan(dados[4][2]) or np.isinf(dados[4][2]):
@@ -2012,9 +1955,6 @@ infos_email = get_email_infos()
 
 # função auxiliar: envia direto se todos os destinatários são @capitaniainvestimentos.com.br, senão abre para revisão
 def _enviar_ou_exibir(email):
-    # TEMPORARIO: tudo como rascunho por 3 dias para validacao (ate 16/04/2026)
-    email.Display()
-    return
     import re
     campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
     enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
@@ -2093,51 +2033,51 @@ def salvar_pdf(xlsx_path: str):
 ################################## MAILER ##################################
 
 def mailer(fundos_selecionados):
-    """Processa fundos e retorna lista dos que foram processados com sucesso."""
+
     _fundos_sucesso = []
+    _erros    = {}
+    _horarios = {}
 
     for f in fundos_selecionados:
 
         # Teste 0: Verifica se as cotas estão corretas.
-        if not check_cotas(f)[0]:
-            print(check_cotas(f)[1])
-            continue  # Interrompe o loop imediatamente
+        check0 = check_cotas(f)
+        if not check0[0]:
+            print(check0[1])
+            _erros[f] = str(check0[1])[:60]
+            continue
 
         # Teste 1: Verifica o benchmark (só é executado se o teste0 tiver sido "ok")
         if check_bench(f):
             print(f'{f}: Tabela do {fundo_bench[f]} sem dados para o dia {dmenos1}')
+            _erros[f] = f"bench sem dados: {fundo_bench[f]}"
             continue
 
         # Teste 3: Verifica o bat_pl.
         if not bat_pl(f):
             print(f +': PL não bateu')
+            _erros[f] = "PL nao bateu"
             continue
-
-        # Teste 4: Verifica se há algum NaN no dataframe gerado.
-        # Aqui, a lógica é invertida: se houver algum NaN (ou seja, se o teste for True), então há erro.
 
         # Teste 2: Verifica o batimento.
         if not batimento(f):
             print(f +': Carteira não bate com COTAS_CAP')
+            _erros[f] = "carteira nao bate"
             continue
 
         try:
             df = gerador_df(f)
         except:
             print(f + ': não foi possível gerar a tabela')
+            _erros[f] = "erro ao gerar tabela"
             continue
 
         if True in df.isna().any().values.tolist():
             print(f +': Existem valores NaN na tabela')
+            _erros[f] = "valores NaN"
             continue
-
-        # Validação: checar labels duplicados na tabela
-        labels = df.iloc[:, 0].astype(str).tolist()
-        duplicados = [l for l in labels if labels.count(l) > 1 and l not in ('', 'nan')]
-        if duplicados:
-            print(f +f': Labels duplicados na tabela: {set(duplicados)}')
-            continue
-
+        
+        
         out_dir   = Path(rf"{diretorio}\PDFs")
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2146,7 +2086,7 @@ def mailer(fundos_selecionados):
             # Abre o arquivo Excel
 
             file_path = f"{diretorio}\\templates\\{f} - template.xlsx"
-
+            
             # Carregar o workbook preservando formatação
             wb = openpyxl.load_workbook(file_path)
             plan = wb["Email"]
@@ -2186,37 +2126,11 @@ def mailer(fundos_selecionados):
                 for j, value in enumerate(row_data, start=col):
                     plan.cell(row=i, column=j, value=value)
 
-            # Encontrar a linha do Patrimônio Líquido
-            pl_row = None
-            for row in plan.iter_rows(min_row=27, max_row=45, min_col=1, max_col=3):
-                for cell in row:
-                    if cell.value == 'Patrimônio Líquido (R$)':
-                        pl_row = cell.row
-                        break
-                if pl_row:
-                    break
-
-            # Limpar linhas sobressalentes entre os dados escritos e o Patrimônio Líquido
-            proxima_linha = header_row + 1 + len(valores2)
-            for r in range(proxima_linha, proxima_linha + 5):
-                val = plan.cell(row=r, column=col).value
-                if val is None or str(val).strip() == '':
-                    break
-                for c in range(col, col + 7):
-                    cell = plan.cell(row=r, column=c)
-                    if not isinstance(cell, openpyxl.cell.cell.MergedCell):
-                        cell.value = None
-
-            # Garantir linha vazia antes do Patrimônio Líquido
-            if pl_row and proxima_linha >= pl_row:
-                plan.insert_rows(pl_row)
-                pl_row += 1
-
             #############################################################################
             # BLOCO 3: Inserir valores retornados pela função pl(f)
             valores3 = pl(f)
-            # Procurar célula com "Patrimônio Líquido (R$)" no intervalo A27:C45
-            for row in plan.iter_rows(min_row=27, max_row=45, min_col=1, max_col=3):
+            # Procurar célula com "Patrimônio Líquido (R$)" no intervalo A27:C39
+            for row in plan.iter_rows(min_row=27, max_row=39, min_col=1, max_col=3):
                 for cell in row:
                     if cell.value == 'Patrimônio Líquido (R$)':
                         header_row = cell.row
@@ -2246,67 +2160,116 @@ def mailer(fundos_selecionados):
             desired_pdf = out_dir / f"{f}_{ano}{mes}{dia}.pdf"
             if Path(pdf_path).name != desired_pdf.name:
                 Path(pdf_path).replace(desired_pdf)
-                pdf_path = desired_pdf
+                pdf_path = desired_pdf            
 
             #se já editou e fechou a planilha, é pq está pronto pra ser enviado
 
             send_outlook(f)
 
-            print(f'{f}: Batimento OK. E-mail gerado (Display)')
+            print(f'{f}: Batimento OK. E-mail Enviado')
             _fundos_sucesso.append(f)
+            _horarios[f] = datetime.now().strftime('%H:%M')
 
             # except:
             #     print(f"{f} - Não foi possível imprimir o pdf com o Libreoffice")
 
         except Exception as e:
-            print(f'{f} - Erro: {e}')
+            import traceback
+            print(f'{f} - Problema: {e}')
+            traceback.print_exc()
+            _erros[f] = str(e)[:60]
+
+    # Salvar erros e horários no JSON_DIR (keyed pela data de referência = dmenos1)
+    _pasta_json = os.path.join(diretorio, "json")
+    os.makedirs(_pasta_json, exist_ok=True)
+
+    def _merge_json(path, novo):
+        existente = {}
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as _f:
+                existente = json.load(_f)
+        existente.update(novo)
+        with open(path, 'w', encoding='utf-8') as _f:
+            json.dump(existente, _f, ensure_ascii=False, indent=2)
+
+    if _erros:
+        _merge_json(os.path.join(_pasta_json, f"erros_{ano}{mes}{dia}.json"), _erros)
+    if _horarios:
+        _merge_json(os.path.join(_pasta_json, f"horarios_{ano}{mes}{dia}.json"), _horarios)
 
     return _fundos_sucesso
 
 
 
-################################## EXECUCAO AUTOMATICA (SEM TKINTER) ##################################
+################################## Opções de input para o usuário ##################################
+input_adm = {'1': fundos_mellon,
+  '2': fundos_xp,
+  '3': fundos_btg,
+  '4': fundos_bradesco,
+  '5': fundos_itau,
+  't': tudo}
+
+
+################################## Menu para escolher os fundos ##################################
+
+class Menu:
+    def __init__(self, master):
+        self.master = master
+        self.master.geometry("450x550")
+        self.master.title("Fundos")
+
+        self.options = input_adm[input('1-Mellon, 2-XP, 3-BTG, 4-Bradesco, 5-Itaú, t-tudo  ')] 
+        self.selected_options = []
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.label = tk.Label(self.master, text="Selecione os fundos desejados e clique no botão para adicioná-los à lista de envio.")
+        self.label.pack(pady=10)
+
+        self.listbox = tk.Listbox(self.master, selectmode=tk.MULTIPLE)
+        for option in self.options:
+            self.listbox.insert(tk.END, option)
+        self.listbox.pack(pady=10)
+
+        self.button = tk.Button(self.master, text="Adicionar fundos", command=self.add_selected_options)
+        self.button.pack(pady=10)
+
+        self.selected_options_label = tk.Label(self.master, text="Fundos selecionados: ")
+        self.selected_options_label.pack(pady=10)
+
+        self.selected_options_listbox = tk.Listbox(self.master)
+        self.selected_options_listbox.pack(pady=10)
+
+    def add_selected_options(self):
+        selected_indices = self.listbox.curselection()
+        for index in selected_indices:
+            option = self.listbox.get(index)
+            self.selected_options.append(option)
+        self.selected_options_listbox.delete(0, tk.END)
+        for option in self.selected_options:
+            self.selected_options_listbox.insert(tk.END, option)
+        print(self.selected_options)
 
 if _arg_fundos:
-    # Recebeu lista de fundos via argumento
-    fundos_solicitados = [f.strip() for f in _arg_fundos.split(',') if f.strip()]
-
-    # Filtrar: manter apenas fundos que existem na lista conhecida
-    fundos_validos = [f for f in fundos_solicitados if f in tudo]
-    fundos_invalidos = [f for f in fundos_solicitados if f not in tudo]
-
+    fundos_validos = [f.strip() for f in _arg_fundos.split(',') if f.strip() in tudo]
+    fundos_invalidos = [f.strip() for f in _arg_fundos.split(',') if f.strip() not in tudo]
     if fundos_invalidos:
-        print(f"\nFundos NAO encontrados na lista (ignorados):")
-        for f in fundos_invalidos:
-            print(f"  - {f}")
-
+        print(f"AVISO: Fundos nao encontrados e ignorados: {', '.join(fundos_invalidos)}")
     if not fundos_validos:
-        print("\nNenhum fundo valido para processar.")
+        print("ERRO: Nenhum fundo valido encontrado.")
         sys.exit(1)
-
-    print(f"\n{'='*60}")
-    print(f"PROCESSANDO {len(fundos_validos)} FUNDO(S)")
-    print(f"{'='*60}")
-    for f in fundos_validos:
-        print(f"  > {f}")
-    print()
-
-    ##################### MAILER #####################
     _fundos_ok = mailer(fundos_validos)
-
-    ##################### SALVAR RESULTADO #####################
     if _arg_resultado:
         with open(_arg_resultado, 'w', encoding='utf-8') as _f:
-            json_lib.dump(_fundos_ok, _f, ensure_ascii=False, indent=2)
-        print(f"\nResultado salvo em: {_arg_resultado}")
-
-    print(f"\n{'='*60}")
-    print(f"CONCLUIDO - {len(_fundos_ok)} de {len(fundos_validos)} fundos processados com sucesso")
-    print(f"{'='*60}")
-
+            json.dump(_fundos_ok, _f, ensure_ascii=False, indent=2)
 else:
-    print("\nUso: python mailer_v_auto.py --data YYYY-MM-DD --fundos \"FUNDO1,FUNDO2,...\" [--resultado resultado.json]")
-    sys.exit(1)
+    root = tk.Tk()
+    menu = Menu(root)
+    root.mainloop()
+
+    ##################### MAILER #####################
+    mailer(menu.selected_options)
 
 
 

@@ -7,11 +7,9 @@ import win32com.client as win32
 # import requests
 import openpyxl
 # from bs4 import BeautifulSoup
-import tkinter as tk
+import tkinter as tk 
 import subprocess
 import os
-import sys
-import json
 from pathlib import Path
 from msoffice2pdf import convert
 from selenium import webdriver
@@ -152,34 +150,6 @@ dmenos1 = dias_uteis[dias_uteis['Dias Uteis'] < hoje]['Dias Uteis'].iloc[-1]
 ano = dmenos1[:4]
 mes = dmenos1[5:7]
 dia = dmenos1[-2:]
-
-# Ler argumentos: --data YYYY-MM-DD --fundos "FUNDO1,FUNDO2" --resultado caminho.json
-_arg_data = None
-_arg_fundos = None
-_arg_resultado = None
-
-for i, arg in enumerate(sys.argv[1:], 1):
-    if arg == '--data' and i < len(sys.argv) - 1:
-        _arg_data = sys.argv[i + 1]
-    elif arg == '--fundos' and i < len(sys.argv) - 1:
-        _arg_fundos = sys.argv[i + 1]
-    elif arg == '--resultado' and i < len(sys.argv) - 1:
-        _arg_resultado = sys.argv[i + 1]
-
-if _arg_data:
-    data_fmt = _arg_data
-    if '/' in data_fmt:
-        partes = data_fmt.split('/')
-        data_fmt = f"{partes[2]}-{partes[1].zfill(2)}-{partes[0].zfill(2)}"
-    if data_fmt in dias_uteis['Dias Uteis'].values:
-        dmenos1 = data_fmt
-        ano = dmenos1[:4]
-        mes = dmenos1[5:7]
-        dia = dmenos1[-2:]
-        print(f"Data de referencia (via argumento): {dmenos1}")
-    else:
-        print(f"ERRO: Data {data_fmt} nao e dia util.")
-        sys.exit(1)
 
 # retorna D-X
 def dmenos(dus):
@@ -1688,6 +1658,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(bench, 63))],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(bench, 126))],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(bench, 252))],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(bench, 504))],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, bench)[0] / ytd(fundo, bench)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1]],
@@ -1708,6 +1679,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '', fundo_du(fundo, 63), bench_du(bench, 63), bench_du(cdi_acum, 63), (fundo_du(fundo, 63)) / (bench_du(cdi_acum, 63))],
             ['Últimos 180 dias', '', fundo_du(fundo, 126), bench_du(bench, 126), bench_du(cdi_acum, 126), (fundo_du(fundo, 126)) / (bench_du(cdi_acum, 126))],
             ['Últimos 360 dias', '', fundo_du(fundo, 252), bench_du(bench, 252), bench_du(cdi_acum, 252),(fundo_du(fundo, 252)) / (bench_du(cdi_acum, 252))],
+            ['Últimos 720 dias', '', fundo_du(fundo, 504), bench_du(bench, 504), bench_du(cdi_acum, 504),(fundo_du(fundo, 504)) / (bench_du(cdi_acum, 504))],
             [f'Ano {int(ano)}', '', ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, cdi_acum)[1] ,ytd(fundo, bench)[0] / ytd(fundo, cdi_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, cdi_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, cdi_acum)[1]],
@@ -1729,6 +1701,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(ifix, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(ifix, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(ifix, 252)],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(ifix, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, ifix)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, ifix)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, ifix)[1]],
@@ -1750,6 +1723,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(cdi_acum, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(cdi_acum, 63)), (fundo_du(fundo, 63)) / (bench_du(bench, 63))],
             ['Últimos 180 dias' , '',fundo_du(fundo, 126), bench_du(cdi_acum, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(cdi_acum, 126)), (fundo_du(fundo, 126)) / (bench_du(bench, 126))],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(cdi_acum, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(cdi_acum, 252)), (fundo_du(fundo, 252)) / (bench_du(bench, 252))],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(cdi_acum, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(cdi_acum, 504)), (fundo_du(fundo, 504)) / (bench_du(bench, 504))],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, cdi_acum)[1], ytd(fundo, bench)[1] ,ytd(fundo, bench)[0] / ytd(fundo, cdi_acum)[1] ,ytd(fundo, bench)[0] / ytd(fundo, bench)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, cdi_acum)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, cdi_acum)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1]],
@@ -1769,6 +1743,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(cdi_acum, 63), bench_du(imab_acum, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(cdi_acum, 126), bench_du(imab_acum, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(cdi_acum, 252), bench_du(imab_acum, 252)],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(cdi_acum, 504), bench_du(imab_acum, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, cdi_acum)[0], ytd(fundo, cdi_acum)[1], ytd(fundo, imab_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, cdi_acum)[0], ret_anos_bench(fundo, imab_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, cdi_acum)[1], ret_anos_bench(fundo, imab_acum)[1]],
@@ -1789,6 +1764,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(imab_acum, 63),fundo_du(fundo, 63)- bench_du(imab_acum, 63),bench_du(imab5_acum, 63),fundo_du(fundo, 63)-  bench_du(imab5_acum, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(imab_acum, 126),fundo_du(fundo, 126)- bench_du(imab_acum, 126),bench_du(imab5_acum, 126),fundo_du(fundo, 126)-  bench_du(imab5_acum, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(imab_acum, 252),fundo_du(fundo, 252)- bench_du(imab_acum, 252),bench_du(imab5_acum, 252),fundo_du(fundo, 252)-  bench_du(imab5_acum, 252)],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(imab_acum, 504),fundo_du(fundo, 504)- bench_du(imab_acum, 504),bench_du(imab5_acum, 504),fundo_du(fundo, 504)-  bench_du(imab5_acum, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, imab_acum)[1],ytd(fundo, imab_acum)[0] - ytd(fundo, imab_acum)[1], ytd(fundo, imab5_acum)[1], ytd(fundo, imab5_acum)[0] - ytd(fundo, imab5_acum)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, imab_acum)[0],ret_anos(fundo)[0]- ret_anos_bench(fundo, imab_acum)[0], ret_anos_bench(fundo, imab5_acum)[0],ret_anos(fundo)[0]- ret_anos_bench(fundo, imab5_acum)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, imab_acum)[1],ret_anos(fundo)[1]- ret_anos_bench(fundo, imab_acum)[1], ret_anos_bench(fundo, imab5_acum)[1],ret_anos(fundo)[1]- ret_anos_bench(fundo, imab5_acum)[1]],
@@ -1810,6 +1786,7 @@ def gerador_df(fundo):
             ['Últimos 90 dias', '',fundo_du(fundo, 63), bench_du(bench, 63), (fundo_du(fundo, 63)) / (bench_du(bench, 63)), bench_du(ifix, 63)],
             ['Últimos 180 dias', '',fundo_du(fundo, 126), bench_du(bench, 126), (fundo_du(fundo, 126)) / (bench_du(bench, 126)), bench_du(ifix, 126)],
             ['Últimos 360 dias', '',fundo_du(fundo, 252), bench_du(bench, 252), (fundo_du(fundo, 252)) / (bench_du(bench, 252)),fundo_du(fundo, 252)],
+            ['Últimos 720 dias', '',fundo_du(fundo, 504), bench_du(bench, 504), (fundo_du(fundo, 504)) / (bench_du(bench, 504)),fundo_du(fundo, 504)],
             [f'Ano {int(ano)}', '',ytd(fundo, bench)[0], ytd(fundo, bench)[1], ytd(fundo, bench)[0] / ytd(fundo, bench)[1], ytd(fundo, ifix)[1]],
             [f'Ano {int(ano) - 1}', '',ret_anos(fundo)[0], ret_anos_bench(fundo, bench)[0], ret_anos(fundo)[0] / ret_anos_bench(fundo, bench)[0], ret_anos_bench(fundo, ifix)[0]],
             [f'Ano {int(ano) - 2}', '',ret_anos(fundo)[1], ret_anos_bench(fundo, bench)[1], ret_anos(fundo)[1] / ret_anos_bench(fundo, bench)[1], ret_anos_bench(fundo, ifix)[1]],
@@ -1822,19 +1799,23 @@ def gerador_df(fundo):
 
     if len(cotas) < 22:
 
-        del dados[6:10]
+        del dados[6:11]
 
     elif len(cotas) < 64:
 
-        del dados[7:10]
+        del dados[7:11]
 
     elif len(cotas) < 127:
 
-        del dados[8:10]
+        del dados[8:11]
 
     elif len(cotas) < 253:
 
-        del dados[9]
+        del dados[9:11]
+
+    elif len(cotas) < 505:
+
+        del dados[10]
 
 
     if np.isnan(dados[4][2]) or np.isinf(dados[4][2]):
@@ -1953,19 +1934,6 @@ def get_email_infos():
 # dicionário que contém as seguintes infos: [0]"NOME DO FUNDO" , [1]"TO", [2]"CC", [3]"BCC"
 infos_email = get_email_infos()
 
-# função auxiliar: envia direto se todos os destinatários são @capitaniainvestimentos.com.br, senão abre para revisão
-def _enviar_ou_exibir(email):
-    import re
-    campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
-    enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
-    dominios_internos = ('@capitaniainvestimentos.com.br', '@capitania.net')
-    if enderecos and all(e.lower().endswith(dominios_internos) for e in enderecos):
-        email.Subject = f"{email.Subject} [INTERNO]"
-        email.Send()
-    else:
-        email.Display()
-
-
 # função de Envio
 def send_outlook(fund):
 
@@ -1993,7 +1961,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['bradesco'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['bradesco'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        _enviar_ou_exibir(email)
+        email.Display()
 
         outlook = win32.Dispatch('Outlook.Application')
         email = outlook.CreateItem(0)
@@ -2003,7 +1971,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund]['itau'][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund]['itau'][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        _enviar_ou_exibir(email)
+        email.Display()
 
     else:
         outlook = win32.Dispatch('Outlook.Application')
@@ -2014,7 +1982,7 @@ def send_outlook(fund):
         email.Subject = f"COTA DIÁRIA | {infos_email[fund][0]}"
         email.HTMLBody = fonte + f"Prezados,<br><br>Segue anexo o relatório diário de rentabilidade do {infos_email[fund][0]}.<br><br>" + assinatura
         email.Attachments.Add(f"{diretorio}\\PDFs\\{fund}_{ano}{mes}{dia}.pdf")
-        _enviar_ou_exibir(email)
+        email.Display()
 
 
 ################################## PDF ##################################
@@ -2033,51 +2001,49 @@ def salvar_pdf(xlsx_path: str):
 ################################## MAILER ##################################
 
 def mailer(fundos_selecionados):
-
-    _fundos_sucesso = []
-    _erros    = {}
-    _horarios = {}
-
+    
     for f in fundos_selecionados:
-
+        
         # Teste 0: Verifica se as cotas estão corretas.
-        check0 = check_cotas(f)
-        if not check0[0]:
-            print(check0[1])
-            _erros[f] = str(check0[1])[:60]
-            continue
-
+        if not check_cotas(f)[0]:
+            print(check_cotas(f)[1])
+            continue  # Interrompe o loop imediatamente
+        
         # Teste 1: Verifica o benchmark (só é executado se o teste0 tiver sido "ok")
         if check_bench(f):
             print(f'{f}: Tabela do {fundo_bench[f]} sem dados para o dia {dmenos1}')
-            _erros[f] = f"bench sem dados: {fundo_bench[f]}"
             continue
 
         # Teste 3: Verifica o bat_pl.
         if not bat_pl(f):
             print(f +': PL não bateu')
-            _erros[f] = "PL nao bateu"
             continue
+
+        # Teste 4: Verifica se há algum NaN no dataframe gerado.
+        # Aqui, a lógica é invertida: se houver algum NaN (ou seja, se o teste for True), então há erro.
 
         # Teste 2: Verifica o batimento.
         if not batimento(f):
             print(f +': Carteira não bate com COTAS_CAP')
-            _erros[f] = "carteira nao bate"
             continue
 
         try:
             df = gerador_df(f)
         except:
             print(f + ': não foi possível gerar a tabela')
-            _erros[f] = "erro ao gerar tabela"
             continue
-
+        
         if True in df.isna().any().values.tolist():
             print(f +': Existem valores NaN na tabela')
-            _erros[f] = "valores NaN"
             continue
-        
-        
+
+        # Validação: checar labels duplicados na tabela
+        labels = df.iloc[:, 0].astype(str).tolist()
+        duplicados = [l for l in labels if labels.count(l) > 1 and l not in ('', 'nan')]
+        if duplicados:
+            print(f +f': Labels duplicados na tabela: {set(duplicados)}')
+            continue
+
         out_dir   = Path(rf"{diretorio}\PDFs")
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2126,11 +2092,37 @@ def mailer(fundos_selecionados):
                 for j, value in enumerate(row_data, start=col):
                     plan.cell(row=i, column=j, value=value)
 
+            # Encontrar a linha do Patrimônio Líquido
+            pl_row = None
+            for row in plan.iter_rows(min_row=27, max_row=45, min_col=1, max_col=3):
+                for cell in row:
+                    if cell.value == 'Patrimônio Líquido (R$)':
+                        pl_row = cell.row
+                        break
+                if pl_row:
+                    break
+
+            # Limpar linhas sobressalentes entre os dados escritos e o Patrimônio Líquido
+            proxima_linha = header_row + 1 + len(valores2)
+            for r in range(proxima_linha, proxima_linha + 5):
+                val = plan.cell(row=r, column=col).value
+                if val is None or str(val).strip() == '':
+                    break
+                for c in range(col, col + 7):
+                    cell = plan.cell(row=r, column=c)
+                    if not isinstance(cell, openpyxl.cell.cell.MergedCell):
+                        cell.value = None
+
+            # Garantir linha vazia antes do Patrimônio Líquido
+            if pl_row and proxima_linha >= pl_row:
+                plan.insert_rows(pl_row)
+                pl_row += 1
+
             #############################################################################
             # BLOCO 3: Inserir valores retornados pela função pl(f)
             valores3 = pl(f)
-            # Procurar célula com "Patrimônio Líquido (R$)" no intervalo A27:C39
-            for row in plan.iter_rows(min_row=27, max_row=39, min_col=1, max_col=3):
+            # Procurar célula com "Patrimônio Líquido (R$)" no intervalo A27:C45
+            for row in plan.iter_rows(min_row=27, max_row=45, min_col=1, max_col=3):
                 for cell in row:
                     if cell.value == 'Patrimônio Líquido (R$)':
                         header_row = cell.row
@@ -2165,39 +2157,16 @@ def mailer(fundos_selecionados):
             #se já editou e fechou a planilha, é pq está pronto pra ser enviado
 
             send_outlook(f)
-
+            
             print(f'{f}: Batimento OK. E-mail Enviado')
-            _fundos_sucesso.append(f)
-            _horarios[f] = datetime.now().strftime('%H:%M')
 
             # except:
             #     print(f"{f} - Não foi possível imprimir o pdf com o Libreoffice")
-
+            
         except Exception as e:
             import traceback
             print(f'{f} - Problema: {e}')
             traceback.print_exc()
-            _erros[f] = str(e)[:60]
-
-    # Salvar erros e horários no JSON_DIR (keyed pela data de referência = dmenos1)
-    _pasta_json = os.path.join(diretorio, "json")
-    os.makedirs(_pasta_json, exist_ok=True)
-
-    def _merge_json(path, novo):
-        existente = {}
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as _f:
-                existente = json.load(_f)
-        existente.update(novo)
-        with open(path, 'w', encoding='utf-8') as _f:
-            json.dump(existente, _f, ensure_ascii=False, indent=2)
-
-    if _erros:
-        _merge_json(os.path.join(_pasta_json, f"erros_{ano}{mes}{dia}.json"), _erros)
-    if _horarios:
-        _merge_json(os.path.join(_pasta_json, f"horarios_{ano}{mes}{dia}.json"), _horarios)
-
-    return _fundos_sucesso
 
 
 
@@ -2251,25 +2220,12 @@ class Menu:
             self.selected_options_listbox.insert(tk.END, option)
         print(self.selected_options)
 
-if _arg_fundos:
-    fundos_validos = [f.strip() for f in _arg_fundos.split(',') if f.strip() in tudo]
-    fundos_invalidos = [f.strip() for f in _arg_fundos.split(',') if f.strip() not in tudo]
-    if fundos_invalidos:
-        print(f"AVISO: Fundos nao encontrados e ignorados: {', '.join(fundos_invalidos)}")
-    if not fundos_validos:
-        print("ERRO: Nenhum fundo valido encontrado.")
-        sys.exit(1)
-    _fundos_ok = mailer(fundos_validos)
-    if _arg_resultado:
-        with open(_arg_resultado, 'w', encoding='utf-8') as _f:
-            json.dump(_fundos_ok, _f, ensure_ascii=False, indent=2)
-else:
-    root = tk.Tk()
-    menu = Menu(root)
-    root.mainloop()
+root = tk.Tk()
+menu = Menu(root)
+root.mainloop()
 
-    ##################### MAILER #####################
-    mailer(menu.selected_options)
+##################### MAILER #####################
+mailer(menu.selected_options)
 
 
 
