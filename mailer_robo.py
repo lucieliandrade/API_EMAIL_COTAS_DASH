@@ -186,6 +186,13 @@ def processar_ciclo():
     print(f"[{agora}] VERIFICANDO EMAILS DE APROVACAO...")
     print(f"{'='*60}")
 
+    # 0. Atualizar JSON de aprovacoes para o dash (somente leitura)
+    try:
+        from scan_outlook import scan
+        scan()
+    except Exception as e:
+        print(f"  Aviso: scan_outlook falhou ({e})")
+
     # 1. Ler emails de aprovacao (TODOS os ADMs)
     emails = ler_emails_aprovacao()
 
