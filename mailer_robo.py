@@ -27,7 +27,7 @@ import traceback
 INTERVALO_MINUTOS = 2
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_oficial_IPCA.py")
+SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
 LOG_PATH = os.path.join(SCRIPT_DIR, "robo_log.txt")
 
 # Redireciona print para o arquivo de log E para o console

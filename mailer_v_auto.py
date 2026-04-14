@@ -2010,20 +2010,15 @@ def get_email_infos():
 # dicionário que contém as seguintes infos: [0]"NOME DO FUNDO" , [1]"TO", [2]"CC", [3]"BCC"
 infos_email = get_email_infos()
 
-# função auxiliar: envia direto se todos os destinatários são @capitaniainvestimentos.com.br, senão abre para revisão
+# REGRA: NUNCA usar email.Send(). Sempre Display() para abrir como rascunho.
 def _enviar_ou_exibir(email):
-    # TEMPORARIO: tudo como rascunho por 3 dias para validacao (ate 16/04/2026)
-    email.Display()
-    return
     import re
     campos = ' '.join(filter(None, [email.To or '', email.CC or '', email.BCC or '']))
     enderecos = re.findall(r'[\w\.\+\-]+@[\w\.\-]+', campos)
     dominios_internos = ('@capitaniainvestimentos.com.br', '@capitania.net')
     if enderecos and all(e.lower().endswith(dominios_internos) for e in enderecos):
         email.Subject = f"{email.Subject} [INTERNO]"
-        email.Send()
-    else:
-        email.Display()
+    email.Display()  # NUNCA trocar por Send()
 
 
 # função de Envio
@@ -2129,6 +2124,24 @@ def mailer(fundos_selecionados):
 
         if True in df.isna().any().values.tolist():
             print(f +': Existem valores NaN na tabela')
+            continue
+
+        # Validação: checar valores zerados nas colunas numéricas (0.00% = dado faltando)
+        colunas_numericas = df.iloc[:, 2:]  # pula label e cota
+        headers = ['Retorno','CDI/Bench','CDI+i/%CDI','%CDI/extra','col5','col6']
+        zeros = (colunas_numericas == 0)
+        if zeros.any().any():
+            detalhes = []
+            for idx, row in zeros.iterrows():
+                for col_idx, is_zero in enumerate(row):
+                    if is_zero:
+                        col_nome = headers[col_idx] if col_idx < len(headers) else f'col{col_idx}'
+                        detalhes.append(f'  >> {df.iloc[idx, 0]} | {col_nome} = 0.00%')
+            print(f'\n  *** BLOQUEADO: {f} ***')
+            print(f'  Motivo: valores zerados (dado faltando no banco)')
+            for d in detalhes:
+                print(d)
+            print(f'  Acao: verificar o dado no banco e rodar novamente.\n')
             continue
 
         # Validação: checar labels duplicados na tabela
