@@ -589,6 +589,19 @@ else:
     )
 
 
+# ── EXPORTAR EXCEL ────────────────────────────────────────────────────────────
+if not df_tab.empty:
+    from io import BytesIO
+    buffer = BytesIO()
+    df_tab.to_excel(buffer, engine="openpyxl")
+    buffer.seek(0)
+    st.download_button(
+        label="Exportar Excel",
+        data=buffer,
+        file_name=f"mailers_cotas_{today.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
 # ── PENDENTES HOJE ────────────────────────────────────────────────────────────
 if hoje_str in status and status[hoje_str] is not None and status[hoje_str] != "feriado":
     pendentes = [f for f in fundos if f not in status[hoje_str]]
