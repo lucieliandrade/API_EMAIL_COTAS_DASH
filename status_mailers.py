@@ -10,11 +10,26 @@ import holidays
 
 JSON_DIR  = r"Z:\Relações com Investidores - NOVO\codigos\cotas\json"
 PDF_DIR   = r"Z:\Relações com Investidores - NOVO\codigos\cotas\PDFs"
+MANUAL_DIR = r"X:\#CapitaniaRFE\Operational\CapitâniaMailer\NOVO Mailer"
 TIPO_FUNDOS = r"X:\BDM\Novo Modelo de Carteiras\Tipo_Fundos.xlsx"
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
 ROBO_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robo_log.txt")
+
+# Mapeamento: nome curto (dash) -> (pasta, nome_pdf_e_email)
+# Quando pasta == nome_pdf, basta 1 valor. Quando diferem, usa tupla.
+MANUAIS_MAPA = {
+    "FCopel":          {"pasta": "FCopel FIM CP",                                     "pdf": "FCOPEL FIF MULTIMERCADO - CP I RL"},
+    "FCopel_Imob":     {"pasta": "FCOPEL FIF MULTIMERCADO IMOB I RL",                 "pdf": "FCOPEL FIF MULTIMERCADO IMOB I RL"},
+    "Sabesprev":       {"pasta": "SABESPREV CAPITÂNIA MERCADO IMOB. FIF MULT. CP RL", "pdf": "SABESPREV CAPITÂNIA MERCADO IMOB. FIF MULT. CP RL"},
+    "CAPITANIA REIT":  {"pasta": "CAPITÂNIA REIT MASTER FIC FIF MM RL",               "pdf": "CAPITÂNIA REIT MASTER FIC FIF MM RL"},
+    "PETROS RFCP":     {"pasta": "FP FOF CAPITÂNIA FIF CI RF CP RL",                  "pdf": "FP FOF CAPITÂNIA FIF CI RF CP RL"},
+    "OPOR IMOB FII":   {"pasta": "OPORTUNIDADES IMOBILIÁRIAS CONSOLIDADO",            "pdf": "OPORTUNIDADES IMOBILIÁRIAS CONSOLIDADO"},
+    "OPOR IMOB SUBCLA":{"pasta": "OPORTUNIDADES IMOBILIÁRIAS SUB CL A",               "pdf": "OPORTUNIDADES IMOBILIÁRIAS CL A"},
+    "OPOR IMOB SUBCLB":{"pasta": "OPORTUNIDADES IMOBILIÁRIAS SUB CL B",               "pdf": "OPORTUNIDADES IMOBILIÁRIAS SUB CL B"},
+    "OPOR IMOB SUBCLC":{"pasta": "OPORTUNIDADES IMOBILIÁRIAS SUB CL C",               "pdf": "OPORTUNIDADES IMOBILIÁRIAS SUB CL C"},
+}
 
 
 st.set_page_config(page_title="RI | Dash Cotas", layout="wide", page_icon="📬")
@@ -193,7 +208,6 @@ def get_fundos():
     manuais = pd.DataFrame([
         {"fundo": "FCopel",          "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "FCopel_Imob",     "ADM": "Itau",     "Tipo": "Manual"},
-        {"fundo": "Reit_Prev_FIE",   "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "Sabesprev",       "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "CAPITANIA REIT",  "ADM": "BNYM",     "Tipo": "Manual"},
         {"fundo": "PETROS RFCP",     "ADM": "Bradesco", "Tipo": "Manual"},
@@ -340,7 +354,7 @@ for d in dias:
         horarios[d_str]   = _load("horarios")
         timestamps[d_str] = {}
     else:
-        # Escaneia pasta de PDFs: quais fundos foram gerados e quando
+        # Escaneia pasta de PDFs automaticos: quais fundos foram gerados e quando
         pdfs = glob.glob(os.path.join(PDF_DIR, f"*_{d_ref}.pdf"))
         processados = set()
         ts_dia = {}
@@ -350,6 +364,47 @@ for d in dias:
             dt_criacao = datetime.fromtimestamp(os.path.getmtime(p))
             atrasado   = dt_criacao.date() > d.date()
             ts_dia[nome] = {"dt": dt_criacao, "atrasado": atrasado}
+
+        # Escaneia pasta NOVO Mailer para fundos manuais
+        for nome_curto, mapa in MANUAIS_MAPA.items():
+            if nome_curto in processados:
+                continue  # ja encontrado na pasta automatica
+            pdf_manual = os.path.join(MANUAL_DIR, mapa["pasta"], f"{mapa['pdf']}_{d_ref}.pdf")
+            if os.path.exists(pdf_manual):
+                processados.add(nome_curto)
+                dt_criacao = datetime.fromtimestamp(os.path.getmtime(pdf_manual))
+                atrasado   = dt_criacao.date() > d.date()
+                ts_dia[nome_curto] = {"dt": dt_criacao, "atrasado": atrasado}
+
+        # Escaneia caixa de entrada do Outlook para fundos manuais (so dia atual)
+        if d.date() == today.date():
+            try:
+                outlook = __import__('win32com.client', fromlist=['Dispatch']).Dispatch('Outlook.Application')
+                ns = outlook.GetNamespace("MAPI")
+                inbox = ns.GetDefaultFolder(6)
+                msgs = inbox.Items
+                msgs.Sort("[ReceivedTime]", True)
+                for msg in msgs:
+                    try:
+                        if msg.ReceivedTime.date() < today:
+                            break
+                        if msg.ReceivedTime.date() != today:
+                            continue
+                        subj = str(msg.Subject)
+                        if 'COTA' not in subj.upper():
+                            continue
+                        for nome_curto, mapa in MANUAIS_MAPA.items():
+                            if nome_curto in processados:
+                                continue
+                            if mapa["pdf"].upper() in subj.upper():
+                                processados.add(nome_curto)
+                                dt_criacao = msg.ReceivedTime
+                                ts_dia[nome_curto] = {"dt": datetime(dt_criacao.year, dt_criacao.month, dt_criacao.day, dt_criacao.hour, dt_criacao.minute), "atrasado": False}
+                    except:
+                        continue
+            except:
+                pass
+
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
         horarios[d_str]   = _load("horarios")
