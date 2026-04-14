@@ -116,32 +116,32 @@ def ler_emails_aprovacao():
 
 
 def mover_email_para_cotas(msg):
-    """Move um email da Caixa de Entrada para a pasta COTAS no Outlook."""
+    """Move um email da Caixa de Entrada para a pasta ri_middle-cotas no Outlook."""
     try:
         outlook = win32.Dispatch('Outlook.Application')
         namespace = outlook.GetNamespace("MAPI")
         inbox = namespace.GetDefaultFolder(6)
-        pasta_cotas = None
+        pasta_destino = None
 
-        # Tentar como subpasta da Caixa de Entrada
+        # Tentar como subpasta da Caixa de Entrada: RI_MIDDLE > COTAS
         try:
-            pasta_cotas = inbox.Folders("COTAS")
+            pasta_destino = inbox.Folders("RI_MIDDLE").Folders("COTAS")
         except:
             pass
 
         # Se nao encontrou, tentar no nivel da conta
-        if pasta_cotas is None:
+        if pasta_destino is None:
             try:
                 root_folder = inbox.Parent
-                pasta_cotas = root_folder.Folders("COTAS")
+                pasta_destino = root_folder.Folders("RI_MIDDLE").Folders("COTAS")
             except:
                 pass
 
-        if pasta_cotas is None:
-            print("    Pasta COTAS nao encontrada no Outlook.")
+        if pasta_destino is None:
+            print("    Pasta RI_MIDDLE > COTAS nao encontrada no Outlook.")
             return False
 
-        msg.Move(pasta_cotas)
+        msg.Move(pasta_destino)
         return True
 
     except Exception as e:
