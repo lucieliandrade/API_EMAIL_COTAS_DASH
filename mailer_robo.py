@@ -252,53 +252,43 @@ def processar_ciclo():
             else:
                 print(f"    [NOVO]     {f}")
 
-        # 4. Chamar o mailer via subprocess
-        fundos_str = ','.join(fundos_novos)
-        resultado_path = os.path.join(DIRETORIO, "json", f"resultado_{data_json}_{datetime.now().strftime('%H%M%S')}.json")
-
-        cmd = [
-            sys.executable,
-            SCRIPT_MAILER,
-            '--data', info['data_completa'],
-            '--fundos', fundos_str,
-            '--resultado', resultado_path
-        ]
-
+        # 4. Processar FUNDO A FUNDO (evita que 1 erro derrube o lote)
         print(f"\n  Executando mailer para {len(fundos_novos)} fundo(s)...")
-        print(f"  Comando: python mailer_v_auto.py --data {info['data_completa']} --fundos \"{fundos_str}\"")
-        print()
 
-        try:
-            resultado = subprocess.run(cmd, timeout=600)  # 10 min timeout
+        for fundo in fundos_novos:
+            resultado_path = os.path.join(DIRETORIO, "json", f"resultado_{data_json}_{datetime.now().strftime('%H%M%S')}.json")
 
-            # 5. Ler resultado (quais fundos foram processados com sucesso)
-            fundos_ok = []
-            if os.path.exists(resultado_path):
-                with open(resultado_path, 'r', encoding='utf-8') as f:
-                    fundos_ok = json.load(f)
-                # Limpar arquivo temporario
-                os.remove(resultado_path)
+            cmd = [
+                sys.executable,
+                SCRIPT_MAILER,
+                '--data', info['data_completa'],
+                '--fundos', fundo,
+                '--resultado', resultado_path
+            ]
 
-            if fundos_ok:
-                # Registrar como processados
-                salvar_processados(data_json, fundos_ok)
-                print(f"\n  {len(fundos_ok)} fundo(s) processado(s) com sucesso:")
-                for f in fundos_ok:
-                    print(f"    [OK] {f}")
+            print(f"\n    [{fundo}] Processando...")
 
-                # Fundos que falharam
-                fundos_falha = [f for f in fundos_novos if f not in fundos_ok]
-                if fundos_falha:
-                    print(f"\n  {len(fundos_falha)} fundo(s) com erro (serao retentados no proximo ciclo):")
-                    for f in fundos_falha:
-                        print(f"    [ERRO] {f}")
-            else:
-                print(f"\n  Nenhum fundo processado com sucesso neste ciclo.")
+            try:
+                subprocess.run(cmd, timeout=300)  # 5 min por fundo
 
-        except subprocess.TimeoutExpired:
-            print(f"\n  TIMEOUT: mailer excedeu 10 minutos. Sera retentado no proximo ciclo.")
-        except Exception as e:
-            print(f"\n  ERRO ao executar mailer: {e}")
+                # Ler resultado
+                if os.path.exists(resultado_path):
+                    with open(resultado_path, 'r', encoding='utf-8') as f:
+                        fundos_ok = json.load(f)
+                    os.remove(resultado_path)
+
+                    if fundo in fundos_ok:
+                        salvar_processados(data_json, [fundo])
+                        print(f"    [{fundo}] OK")
+                    else:
+                        print(f"    [{fundo}] ERRO - mailer nao processou")
+                else:
+                    print(f"    [{fundo}] ERRO - sem resultado (script falhou)")
+
+            except subprocess.TimeoutExpired:
+                print(f"    [{fundo}] TIMEOUT (5 min)")
+            except Exception as e:
+                print(f"    [{fundo}] ERRO: {e}")
 
     # 6. Mover emails processados para pasta COTAS
     # So move se TODOS os fundos do email foram processados
