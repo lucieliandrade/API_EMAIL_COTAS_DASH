@@ -16,6 +16,11 @@ DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
 ROBO_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robo_log.txt")
 
+MANUAIS_LISTA = [
+    "FCopel", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT",
+    "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
+]
+
 
 st.set_page_config(page_title="RI | Dash Cotas", layout="wide", page_icon="📬")
 
@@ -300,6 +305,7 @@ status     = {}
 erros      = {}
 horarios   = {}
 timestamps = {}   # {d_str: {fundo: {"dt": datetime, "atrasado": bool}}}
+manuais_aprovados = {}  # {d_str: set de fundos manuais aprovados}
 
 for d in dias:
     d_str = d.strftime("%Y%m%d")
@@ -311,6 +317,14 @@ for d in dias:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         return {}
+
+    # Carregar aprovados manuais do dia
+    _aprov_path = os.path.join(JSON_DIR, f"aprovados_{d_ref}.json")
+    _aprov_manual = set()
+    if os.path.exists(_aprov_path):
+        with open(_aprov_path, "r", encoding="utf-8") as f:
+            _aprov_manual = set(json.load(f).get("manual", []))
+    manuais_aprovados[d_str] = _aprov_manual
 
     if d.date() in feriados_br:
         status[d_str]     = "feriado"
@@ -459,8 +473,11 @@ for fundo in fundos_filtrados:
                 hora = ts["dt"].strftime("%H:%M") if ts else ""
                 linha[col] = f"✅ {hora}" if hora else "✅"
         else:
-            motivo = erros[d_str].get(fundo, "")
-            linha[col] = f"❌ {motivo}" if motivo else "❌"
+            if fundo in MANUAIS_LISTA and fundo in manuais_aprovados.get(d_str, set()):
+                linha[col] = "ENVIAR"
+            else:
+                motivo = erros[d_str].get(fundo, "")
+                linha[col] = f"❌ {motivo}" if motivo else "❌"
     linhas.append(linha)
 
 df_tab = pd.DataFrame(linhas).set_index("Fundo") if linhas else pd.DataFrame()
@@ -474,6 +491,8 @@ else:
             return "background-color:#fef3c7; color:#92400e; text-align:center; font-size:12px; font-weight:600"
         elif v.startswith("✅"):
             return "background-color:#d4edda; color:#155724; text-align:center; font-size:13px; font-weight:600"
+        elif v == "ENVIAR":
+            return "background-color:#dbeafe; color:#1e40af; text-align:center; font-size:13px; font-weight:700"
         elif v.startswith("❌"):
             return "background-color:#f8d7da; color:#721c24; text-align:center; font-size:12px"
         elif v.startswith("🏖️"):

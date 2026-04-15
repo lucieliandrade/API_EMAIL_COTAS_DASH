@@ -17,6 +17,10 @@ desktop.ini
 # Pastas de backup/versoes antigas
 Cotas_backup_z/
 estava  no z/
+_arquivo_morto/
+
+# Lock do robo
+mailer_robo.lock
 
 # Sensiveis
 .env

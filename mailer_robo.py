@@ -22,12 +22,22 @@ import sys
 import time
 import subprocess
 import traceback
+import msvcrt
 
 
 INTERVALO_MINUTOS = 2
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
+LOCK_FILE = os.path.join(SCRIPT_DIR, "mailer_robo.lock")
+
+# ── TRAVA: impede mais de 1 instancia ──────────────────────────────────────
+try:
+    _lock_fh = open(LOCK_FILE, 'w')
+    msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
+except (OSError, IOError):
+    print("BLOQUEADO: Outra instancia do robo ja esta rodando. Encerrando.")
+    sys.exit(0)
 LOG_PATH = os.path.join(SCRIPT_DIR, "robo_log.txt")
 
 # Redireciona print para o arquivo de log E para o console
