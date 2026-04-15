@@ -284,6 +284,11 @@ def processar_ciclo():
         print(f"\n  Executando mailer para {len(fundos_novos)} fundo(s)...")
 
         for fundo in fundos_novos:
+            # Reler processados antes de cada fundo (evita duplicidade)
+            if fundo in carregar_processados(data_json):
+                print(f"\n    [{fundo}] JA PROCESSADO (pulando)")
+                continue
+
             resultado_path = os.path.join(DIRETORIO, "json", f"resultado_{data_json}_{datetime.now().strftime('%H%M%S')}.json")
 
             cmd = [

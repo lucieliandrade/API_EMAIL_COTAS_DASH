@@ -1992,7 +1992,7 @@ def get_email_infos():
             if pd.isna(item):
                 infos_lista_parametros.append('')
             else:
-                infos_lista_parametros.append(str(item) if not isinstance(item, str) else item) # Garante que é string
+                infos_lista_parametros.append(str(item).strip() if not isinstance(item, str) else item.strip()) # Garante que é string, sem espacos/tabs extras
 
         # Reconstruir a estrutura do dicionário
 
