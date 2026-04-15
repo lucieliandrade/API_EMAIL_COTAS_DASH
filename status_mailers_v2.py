@@ -372,6 +372,13 @@ for d in dias:
             dt_criacao = datetime.fromtimestamp(os.path.getmtime(p))
             atrasado   = dt_criacao.date() > d.date()
             ts_dia[nome] = {"dt": dt_criacao, "atrasado": atrasado}
+        # Manuais e Site sem template: não geram PDF, marcar como enviados
+        # se pelo menos 1 fundo auto foi processado no dia (= dia ativo)
+        if processados:
+            for fm in MANUAIS_LISTA:
+                processados.add(fm)
+            for fs in ["CAPIT REIT FI", "CAPIT MULTIPREV", "CAPIT PREMIUM", "CAPIT PREV FDR", "CAPITANIA TOP"]:
+                processados.add(fs)
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
         horarios[d_str]   = _load("horarios")
