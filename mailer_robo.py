@@ -23,8 +23,6 @@ import time
 import subprocess
 import traceback
 import msvcrt
-import ctypes
-import threading
 
 
 INTERVALO_MINUTOS = 2
@@ -202,18 +200,6 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
         json.dump(erros, f, ensure_ascii=False, indent=2)
 
 
-def notificar_erro(fundo, motivo):
-    """Popup do Windows (nao-bloqueante) avisando que um fundo falhou."""
-    def _popup():
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            f"Fundo: {fundo}\nMotivo: {motivo}",
-            "Robo Mailer - ERRO",
-            0x30  # MB_ICONWARNING
-        )
-    threading.Thread(target=_popup, daemon=True).start()
-
-
 ################################## CICLO PRINCIPAL ##################################
 
 def processar_ciclo():
@@ -316,23 +302,19 @@ def processar_ciclo():
                     else:
                         motivo = "mailer nao processou"
                         salvar_erro(data_json, fundo, motivo)
-                        notificar_erro(fundo, motivo)
                         print(f"    [{fundo}] ERRO - {motivo}")
                 else:
                     motivo = "script falhou (sem resultado)"
                     salvar_erro(data_json, fundo, motivo)
-                    notificar_erro(fundo, motivo)
                     print(f"    [{fundo}] ERRO - {motivo}")
 
             except subprocess.TimeoutExpired:
                 motivo = "timeout (5 min)"
                 salvar_erro(data_json, fundo, motivo)
-                notificar_erro(fundo, motivo)
                 print(f"    [{fundo}] TIMEOUT (5 min)")
             except Exception as e:
                 motivo = str(e)
                 salvar_erro(data_json, fundo, motivo)
-                notificar_erro(fundo, motivo)
                 print(f"    [{fundo}] ERRO: {e}")
 
     # 6. Mover emails processados para pasta COTAS
