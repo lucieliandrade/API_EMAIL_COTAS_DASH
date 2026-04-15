@@ -343,12 +343,15 @@ for d in dias:
                 return json.load(f)
         return {}
 
-    # Carregar aprovados manuais do dia
+    # Carregar aprovados do dia (scan_outlook gera este JSON)
     _aprov_path = os.path.join(JSON_DIR, f"aprovados_{d_ref}.json")
     _aprov_manual = set()
+    _aprov_site = set()
     if os.path.exists(_aprov_path):
         with open(_aprov_path, "r", encoding="utf-8") as f:
-            _aprov_manual = set(json.load(f).get("manual", []))
+            _aprov_data = json.load(f)
+            _aprov_manual = set(_aprov_data.get("manual", []))
+            _aprov_site = set(_aprov_data.get("site", []))
     manuais_aprovados[d_str] = _aprov_manual
 
     if d.date() in feriados_br:
@@ -372,12 +375,12 @@ for d in dias:
             dt_criacao = datetime.fromtimestamp(os.path.getmtime(p))
             atrasado   = dt_criacao.date() > d.date()
             ts_dia[nome] = {"dt": dt_criacao, "atrasado": atrasado}
-        # Manuais e Site sem template: não geram PDF, marcar como enviados
-        # se pelo menos 1 fundo auto foi processado no dia (= dia ativo)
-        if processados:
-            for fm in MANUAIS_LISTA:
-                processados.add(fm)
-            for fs in ["CAPIT REIT FI", "CAPIT MULTIPREV", "CAPIT PREMIUM", "CAPIT PREV FDR", "CAPITANIA TOP"]:
+        # Manual: check apenas se scan_outlook encontrou email "COTA DIARIA"
+        for fm in _aprov_manual:
+            processados.add(fm)
+        # Site sem template: check apenas se scan_outlook encontrou email "Aprovadas"
+        for fs in _aprov_site:
+            if fs not in processados:
                 processados.add(fs)
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
