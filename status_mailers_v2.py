@@ -190,14 +190,39 @@ div[data-testid="column"] button {
 def get_fundos():
     df = pd.read_excel(TIPO_FUNDOS, usecols="A,E,F,I,J,K,L")
     df = df[df["Encerrado"].isna() & df["modelo_mailer"].notna()].copy()
-    df = df[df["fundo"] != "PETROS RFCP"]
+    df = df[~df["fundo"].isin(["PETROS RFCP"])]
     df["fundo"] = df["fundo"].replace("CAPITANIA FCOPEL", "FCopel")
     df["ADM"] = df["ADM"].fillna("Outro")
-    return df[["fundo", "ADM"]].sort_values("fundo").reset_index(drop=True)
+    df["Tipo"] = "Auto"
+    # Site com template: robo gera rascunho, dash mostra como Site
+    fundos_site = ["BNYCL12879", "CSHG MAGIS II", "BNY12748", "BNYCL12975",
+                   "CAPIT D INC FIC", "PORTFOLIO FIDC", "CAPITANIA PREV BP",
+                   "CAPITANIA YIELD 120", "INFRA ADV CLA", "XP INFRA90"]
+    df.loc[df["fundo"].isin(fundos_site), "Tipo"] = "Site"
+    # Fundos de envio manual e Site sem template
+    extras = pd.DataFrame([
+        {"fundo": "FCopel",          "ADM": "Itau",     "Tipo": "Manual"},
+        {"fundo": "FCopel_Imob",     "ADM": "Itau",     "Tipo": "Manual"},
+        {"fundo": "Sabesprev",       "ADM": "Itau",     "Tipo": "Manual"},
+        {"fundo": "CAPITANIA REIT",  "ADM": "BNYM",     "Tipo": "Manual"},
+        {"fundo": "OPOR IMOB FII",   "ADM": "XP",       "Tipo": "Manual"},
+        {"fundo": "OPOR IMOB SUBCLA","ADM": "XP",       "Tipo": "Manual"},
+        {"fundo": "OPOR IMOB SUBCLB","ADM": "XP",       "Tipo": "Manual"},
+        {"fundo": "OPOR IMOB SUBCLC","ADM": "XP",       "Tipo": "Manual"},
+        {"fundo": "CAPIT REIT FI",   "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT MULTIPREV", "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT PREMIUM",   "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPIT PREV FDR",  "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "CAPITANIA TOP",   "ADM": "BNYM",     "Tipo": "Site"},
+    ])
+    df = pd.concat([df[["fundo", "ADM", "Tipo"]], extras], ignore_index=True)
+    df = df.drop_duplicates(subset="fundo")
+    return df.sort_values("fundo").reset_index(drop=True)
 
 fundo_df = get_fundos()
 fundos    = fundo_df["fundo"].tolist()
 adms      = sorted(fundo_df["ADM"].unique().tolist())
+tipos     = sorted(fundo_df["Tipo"].unique().tolist())
 
 
 # ── SEMANA ───────────────────────────────────────────────────────────────────
@@ -427,14 +452,16 @@ for i, d in enumerate(dias):
 st.markdown("<br>", unsafe_allow_html=True)
 with st.container():
     st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
-    fc1, fc2, fc3 = st.columns([2, 2, 3])
+    fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
     with fc1:
         adm_sel = st.selectbox("ADM", ["Todos"] + adms, label_visibility="visible")
     with fc2:
+        tipo_sel = st.selectbox("Tipo", ["Todos"] + tipos, label_visibility="visible")
+    with fc3:
         hoje_str = today.strftime("%Y%m%d")
         status_opts = ["Todos", "✅ Enviado hoje", "❌ Pendente hoje"]
         status_sel  = st.selectbox("Status hoje", status_opts)
-    with fc3:
+    with fc4:
         busca = st.text_input("Buscar fundo", placeholder="Digite o nome do fundo...")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -442,6 +469,8 @@ with st.container():
 df_filtrado = fundo_df.copy()
 if adm_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["ADM"] == adm_sel]
+if tipo_sel != "Todos":
+    df_filtrado = df_filtrado[df_filtrado["Tipo"] == tipo_sel]
 if status_sel == "✅ Enviado hoje" and hoje_str in status and status[hoje_str] is not None:
     df_filtrado = df_filtrado[df_filtrado["fundo"].isin(status[hoje_str])]
 elif status_sel == "❌ Pendente hoje" and hoje_str in status and status[hoje_str] is not None:
@@ -457,7 +486,8 @@ colunas = [f"{DIAS_ABR[i]}<br>{d.strftime('%d/%m')}" for i, d in enumerate(dias)
 
 linhas = []
 for fundo in fundos_filtrados:
-    linha = {"Fundo": fundo}
+    tipo = fundo_df.loc[fundo_df["fundo"] == fundo, "Tipo"].values[0]
+    linha = {"Fundo": fundo, "Tipo": tipo}
     for i, d in enumerate(dias):
         d_str = d.strftime("%Y%m%d")
         col   = colunas[i]
