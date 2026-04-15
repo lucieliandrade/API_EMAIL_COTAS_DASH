@@ -23,6 +23,8 @@ import time
 import subprocess
 import traceback
 import msvcrt
+import ctypes
+import threading
 
 
 INTERVALO_MINUTOS = 2
@@ -186,6 +188,32 @@ def salvar_processados(data_ref_yyyymmdd, fundos):
         json.dump(list(processados), f, ensure_ascii=False, indent=2)
 
 
+def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
+    """Salva o erro no JSON para o dash exibir."""
+    pasta_json = os.path.join(DIRETORIO, "json")
+    os.makedirs(pasta_json, exist_ok=True)
+    arquivo = os.path.join(pasta_json, f"erros_{data_ref_yyyymmdd}.json")
+    erros = {}
+    if os.path.exists(arquivo):
+        with open(arquivo, 'r', encoding='utf-8') as f:
+            erros = json.load(f)
+    erros[fundo] = motivo
+    with open(arquivo, 'w', encoding='utf-8') as f:
+        json.dump(erros, f, ensure_ascii=False, indent=2)
+
+
+def notificar_erro(fundo, motivo):
+    """Popup do Windows (nao-bloqueante) avisando que um fundo falhou."""
+    def _popup():
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            f"Fundo: {fundo}\nMotivo: {motivo}",
+            "Robo Mailer - ERRO",
+            0x30  # MB_ICONWARNING
+        )
+    threading.Thread(target=_popup, daemon=True).start()
+
+
 ################################## CICLO PRINCIPAL ##################################
 
 def processar_ciclo():
@@ -281,13 +309,25 @@ def processar_ciclo():
                         salvar_processados(data_json, [fundo])
                         print(f"    [{fundo}] OK")
                     else:
-                        print(f"    [{fundo}] ERRO - mailer nao processou")
+                        motivo = "mailer nao processou"
+                        salvar_erro(data_json, fundo, motivo)
+                        notificar_erro(fundo, motivo)
+                        print(f"    [{fundo}] ERRO - {motivo}")
                 else:
-                    print(f"    [{fundo}] ERRO - sem resultado (script falhou)")
+                    motivo = "script falhou (sem resultado)"
+                    salvar_erro(data_json, fundo, motivo)
+                    notificar_erro(fundo, motivo)
+                    print(f"    [{fundo}] ERRO - {motivo}")
 
             except subprocess.TimeoutExpired:
+                motivo = "timeout (5 min)"
+                salvar_erro(data_json, fundo, motivo)
+                notificar_erro(fundo, motivo)
                 print(f"    [{fundo}] TIMEOUT (5 min)")
             except Exception as e:
+                motivo = str(e)
+                salvar_erro(data_json, fundo, motivo)
+                notificar_erro(fundo, motivo)
                 print(f"    [{fundo}] ERRO: {e}")
 
     # 6. Mover emails processados para pasta COTAS
