@@ -359,11 +359,13 @@ for d in dias:
     _aprov_path = os.path.join(JSON_DIR, f"aprovados_{d_ref}.json")
     _aprov_manual = set()
     _aprov_site = set()
+    _aprov_manual_erros = {}
     if os.path.exists(_aprov_path):
         with open(_aprov_path, "r", encoding="utf-8") as f:
             _aprov_data = json.load(f)
             _aprov_manual = set(_aprov_data.get("manual", []))
             _aprov_site = set(_aprov_data.get("site", []))
+            _aprov_manual_erros = _aprov_data.get("manual_erros", {})
     manuais_aprovados[d_str] = _aprov_manual
 
     if d.date() in feriados_br:
@@ -396,6 +398,15 @@ for d in dias:
                 processados.add(fs)
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
+        # Adicionar erros de validação de PDFs manuais
+        for fundo_erro, motivo in _aprov_manual_erros.items():
+            # Extrair datas para mensagem legível
+            import re as _re
+            _m = _re.search(r'PDF=(\d{4})(\d{2})(\d{2}).*esperado=(\d{4})(\d{2})(\d{2})', motivo)
+            if _m:
+                erros[d_str][fundo_erro] = f"Data errada ({_m.group(3)}/{_m.group(2)} ≠ {_m.group(6)}/{_m.group(5)})"
+            else:
+                erros[d_str][fundo_erro] = f"Data errada: {motivo}"
         horarios[d_str]   = _load("horarios")
         timestamps[d_str] = ts_dia
 
