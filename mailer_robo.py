@@ -133,17 +133,16 @@ def mover_email_para_cotas(msg):
         inbox = namespace.GetDefaultFolder(6)
         pasta_destino = None
 
-        # Tentar como subpasta da Caixa de Entrada: RI_MIDDLE > COTAS
+        # Tentar como subpasta da Caixa de Entrada: ***RI_MIDDLE > COTAS
         try:
-            pasta_destino = inbox.Folders("RI_MIDDLE").Folders("COTAS")
+            pasta_destino = inbox.Folders("***RI_MIDDLE").Folders("COTAS")
         except:
             pass
 
-        # Se nao encontrou, tentar no nivel da conta
+        # Fallback sem asteriscos
         if pasta_destino is None:
             try:
-                root_folder = inbox.Parent
-                pasta_destino = root_folder.Folders("RI_MIDDLE").Folders("COTAS")
+                pasta_destino = inbox.Folders("RI_MIDDLE").Folders("COTAS")
             except:
                 pass
 
