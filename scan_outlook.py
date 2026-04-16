@@ -14,7 +14,9 @@ from datetime import datetime, timedelta
 import re
 import os
 import json
+import tempfile
 import holidays
+import pdfplumber
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_DIR = r"Z:\Relações com Investidores - NOVO\codigos\cotas\json"
@@ -50,6 +52,58 @@ def ref_de_hoje():
     return prev.strftime("%Y%m%d")
 
 
+MESES_PT = {
+    'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04',
+    'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08',
+    'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
+}
+
+
+def validar_pdf_manual(msg, d_ref):
+    """Valida se a data no nome do anexo e a primeira data dentro do PDF batem com D-1.
+    Retorna (True, '') se ok, (False, motivo) se não."""
+    if msg.Attachments.Count == 0:
+        return False, "sem anexo"
+
+    att = msg.Attachments.Item(1)
+    nome = att.FileName
+
+    # 1. Extrair data do nome do arquivo (YYYYMMDD)
+    match_nome = re.search(r'(\d{8})\.pdf', nome, re.IGNORECASE)
+    if not match_nome:
+        return False, f"nome sem data: {nome}"
+    data_nome = match_nome.group(1)
+
+    if data_nome != d_ref:
+        return False, f"nome={data_nome} esperado={d_ref}"
+
+    # 2. Abrir PDF e extrair primeira data da tabela
+    tmp = os.path.join(tempfile.gettempdir(), nome)
+    try:
+        att.SaveAsFile(tmp)
+        with pdfplumber.open(tmp) as pdf:
+            text = pdf.pages[0].extract_text() or ''
+        # Procurar padrao DD-mmm-AA (ex: 15-abr-26)
+        match_pdf = re.search(r'(\d{1,2})-(\w{3})-(\d{2})', text)
+        if not match_pdf:
+            return False, "data nao encontrada no PDF"
+
+        dia_pdf = match_pdf.group(1).zfill(2)
+        mes_pdf = MESES_PT.get(match_pdf.group(2).lower(), '00')
+        ano_pdf = '20' + match_pdf.group(3)
+        data_pdf = f"{ano_pdf}{mes_pdf}{dia_pdf}"
+
+        if data_pdf != d_ref:
+            return False, f"PDF={data_pdf} esperado={d_ref}"
+
+        return True, ''
+    except Exception as e:
+        return False, f"erro leitura: {e}"
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def scan():
     d_ref = ref_de_hoje()
     hoje = datetime.today().date()
@@ -62,6 +116,7 @@ def scan():
 
     site_aprovados = set()
     manual_enviados = set()
+    manual_erros = {}
 
     for msg in msgs:
         try:
@@ -82,11 +137,18 @@ def scan():
                         if f and f in FUNDOS_SITE:
                             site_aprovados.add(f)
 
-            # Manual: email "COTA DIARIA"
-            if 'COTA' in subj.upper():
-                for nome_curto, mapa in MANUAIS_MAPA.items():
-                    if mapa["pdf"].upper() in subj.upper():
-                        manual_enviados.add(nome_curto)
+            # Manual: email "COTA DIARIA" + validação do PDF anexo
+            if 'COTA' in subj.upper() and msg.Attachments.Count > 0:
+                for i in range(1, msg.Attachments.Count + 1):
+                    att_nome = msg.Attachments.Item(i).FileName.upper()
+                    for nome_curto, mapa in MANUAIS_MAPA.items():
+                        if mapa["pdf"].upper() in att_nome:
+                            ok, motivo = validar_pdf_manual(msg, d_ref)
+                            if ok:
+                                manual_enviados.add(nome_curto)
+                            else:
+                                manual_erros[nome_curto] = motivo
+                                print(f"  BLOQUEADO: {nome_curto} - {motivo}")
 
         except:
             continue
@@ -96,6 +158,7 @@ def scan():
         "scan_hora": datetime.now().strftime("%H:%M:%S"),
         "site": sorted(site_aprovados),
         "manual": sorted(manual_enviados),
+        "manual_erros": manual_erros,
     }
 
     os.makedirs(JSON_DIR, exist_ok=True)
