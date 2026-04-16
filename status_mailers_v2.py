@@ -294,6 +294,18 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ── LOG DO ROBÔ ──────────────────────────────────────────────────────────────
+if os.path.exists(ROBO_LOG):
+    with st.expander("📋 Log do robô"):
+        try:
+            with open(ROBO_LOG, "r", encoding="utf-8", errors="ignore") as f:
+                linhas_log = f.readlines()
+            # Últimas 30 linhas, filtrar só as úteis
+            ultimas = [l.rstrip() for l in linhas_log[-30:] if l.strip()]
+            st.code("\n".join(ultimas), language=None)
+        except Exception:
+            st.warning("Não foi possível ler o log.")
+
 # ── NAVEGAÇÃO ────────────────────────────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 3, 1.2, 1.2])
 with c1:
