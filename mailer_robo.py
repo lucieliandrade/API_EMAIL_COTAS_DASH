@@ -1,11 +1,11 @@
 """
 mailer_robo.py - Robo automatico de mailers de cotas diarias
 ============================================================
-Monitora a caixa de entrada do Outlook a cada 5 minutos.
+Monitora a caixa de entrada do Outlook a cada 2 minutos.
 Quando encontra emails de aprovacao ("Carteiras Aprovadas - Fundos [ADM] - Sistema Backoffice"),
 extrai a data e os fundos aprovados, e executa o mailer automaticamente.
 
-Os emails sao abertos como rascunho (Display) para revisao antes do envio manual.
+REGRA: NUNCA envia email direto. Sempre Display() = rascunho para revisao manual.
 
 Uso:
     python mailer_robo.py
@@ -23,21 +23,69 @@ import time
 import subprocess
 import traceback
 import msvcrt
-
+import threading
+import ctypes
 
 INTERVALO_MINUTOS = 2
+MAX_FALHAS_POR_FUNDO = 3        # apos 3 falhas seguidas, para de tentar no dia
+TIMEOUT_CICLO_SEG = 120          # se um ciclo travar > 2 min, mata o processo
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
+
+# Fundos manuais: enviados por email com PDF, NAO pelo mailer automatico.
+# O robo deve pular esses fundos (scan_outlook.py detecta o envio deles).
+FUNDOS_MANUAIS = {
+    "FCopel", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT", "PETROS RFCP",
+    "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
+    "CAPITANIA FCOPEL",  # alias do FCopel: nome usado no email de aprovacao do Itau
+}
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
 LOCK_FILE = os.path.join(SCRIPT_DIR, "mailer_robo.lock")
 
-# ── TRAVA: impede mais de 1 instancia ──────────────────────────────────────
-try:
-    _lock_fh = open(LOCK_FILE, 'w')
-    msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
-except (OSError, IOError):
-    print("BLOQUEADO: Outra instancia do robo ja esta rodando. Encerrando.")
-    sys.exit(0)
+# ── TRAVA: impede mais de 1 instancia (com deteccao de processo morto) ────
+def _adquirir_lock():
+    """Tenta adquirir o lock. Se o processo anterior morreu/travou, retoma."""
+    # Checar se o lock existe e se o PID anterior ainda esta vivo
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, 'r') as f:
+                conteudo = f.read().strip()
+            if conteudo.isdigit():
+                pid_antigo = int(conteudo)
+                # Verificar se o processo ainda existe
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(0x0400, False, pid_antigo)  # PROCESS_QUERY_INFORMATION
+                if handle:
+                    kernel32.CloseHandle(handle)
+                    # Processo existe — checar se o lock esta velho (> 10 min = travado)
+                    idade = time.time() - os.path.getmtime(LOCK_FILE)
+                    if idade > 600:
+                        print(f"  Lock antigo (PID {pid_antigo}, {idade/60:.0f} min). Matando processo travado...")
+                        try:
+                            kernel32.TerminateProcess(
+                                kernel32.OpenProcess(0x0001, False, pid_antigo), 1)  # PROCESS_TERMINATE
+                        except:
+                            pass
+                        time.sleep(2)
+                    else:
+                        print(f"BLOQUEADO: Outra instancia (PID {pid_antigo}) rodando ha {idade/60:.0f} min. Encerrando.")
+                        sys.exit(0)
+                # else: processo morreu, lock e orfao — prosseguir
+        except:
+            pass  # arquivo corrompido, prosseguir
+
+    # Adquirir o lock
+    fh = open(LOCK_FILE, 'w')
+    try:
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+    except (OSError, IOError):
+        print("BLOQUEADO: Outra instancia do robo ja esta rodando. Encerrando.")
+        sys.exit(0)
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh
+
+_lock_fh = _adquirir_lock()
 LOG_PATH = os.path.join(SCRIPT_DIR, "robo_log.txt")
 
 # Redireciona print para o arquivo de log E para o console
@@ -199,6 +247,56 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
         json.dump(erros, f, ensure_ascii=False, indent=2)
 
 
+################################## CONTROLE DE FALHAS ##################################
+
+_falhas_hoje = {}  # {fundo: contagem} — resetado quando muda o dia
+_dia_falhas = None
+
+def _get_falhas():
+    """Retorna o dict de falhas do dia, resetando se mudou o dia."""
+    global _falhas_hoje, _dia_falhas
+    hoje = datetime.today().strftime('%Y%m%d')
+    if _dia_falhas != hoje:
+        _falhas_hoje = {}
+        _dia_falhas = hoje
+    return _falhas_hoje
+
+def registrar_falha(fundo):
+    """Registra +1 falha para o fundo. Retorna True se atingiu o limite."""
+    falhas = _get_falhas()
+    falhas[fundo] = falhas.get(fundo, 0) + 1
+    return falhas[fundo] >= MAX_FALHAS_POR_FUNDO
+
+def fundo_bloqueado(fundo):
+    """Retorna True se o fundo ja falhou demais hoje."""
+    falhas = _get_falhas()
+    return falhas.get(fundo, 0) >= MAX_FALHAS_POR_FUNDO
+
+
+################################## WATCHDOG (ANTI-TRAVAMENTO) ##################################
+
+_watchdog_timer = None
+
+def _watchdog_matar():
+    """Chamado pelo timer se o ciclo excedeu o timeout. Mata o processo."""
+    print(f"\n  WATCHDOG: ciclo travou por mais de {TIMEOUT_CICLO_SEG}s. Reiniciando processo...")
+    sys.stdout.flush()
+    os._exit(99)  # sai imediatamente — Task Scheduler ou Startup reinicia
+
+def watchdog_iniciar():
+    global _watchdog_timer
+    watchdog_cancelar()
+    _watchdog_timer = threading.Timer(TIMEOUT_CICLO_SEG, _watchdog_matar)
+    _watchdog_timer.daemon = True
+    _watchdog_timer.start()
+
+def watchdog_cancelar():
+    global _watchdog_timer
+    if _watchdog_timer is not None:
+        _watchdog_timer.cancel()
+        _watchdog_timer = None
+
+
 ################################## CICLO PRINCIPAL ##################################
 
 def processar_ciclo():
@@ -244,6 +342,8 @@ def processar_ciclo():
             }
 
         for f in e['fundos']:
+            if f in FUNDOS_MANUAIS:
+                continue  # fundo manual — enviado por PDF, nao pelo mailer
             if f not in datas_fundos[data_ref_json]['fundos']:
                 datas_fundos[data_ref_json]['fundos'].append(f)
         datas_fundos[data_ref_json]['emails'].append(e)
@@ -262,13 +362,20 @@ def processar_ciclo():
         for f in info['fundos']:
             if f in processados:
                 print(f"    [JA FEITO] {f}")
+            elif fundo_bloqueado(f):
+                print(f"    [PARADO]   {f}  (falhou {MAX_FALHAS_POR_FUNDO}x, nao tenta mais hoje)")
             else:
                 print(f"    [NOVO]     {f}")
 
         # 4. Processar FUNDO A FUNDO (evita que 1 erro derrube o lote)
-        print(f"\n  Executando mailer para {len(fundos_novos)} fundo(s)...")
+        fundos_a_tentar = [f for f in fundos_novos if not fundo_bloqueado(f)]
+        if not fundos_a_tentar:
+            print(f"\n  Todos os fundos novos ja atingiram o limite de {MAX_FALHAS_POR_FUNDO} falhas.")
+            continue
 
-        for fundo in fundos_novos:
+        print(f"\n  Executando mailer para {len(fundos_a_tentar)} fundo(s)...")
+
+        for fundo in fundos_a_tentar:
             # Reler processados antes de cada fundo (evita duplicidade)
             if fundo in carregar_processados(data_json):
                 print(f"\n    [{fundo}] JA PROCESSADO (pulando)")
@@ -299,22 +406,34 @@ def processar_ciclo():
                         salvar_processados(data_json, [fundo])
                         print(f"    [{fundo}] OK")
                     else:
+                        bloqueou = registrar_falha(fundo)
                         motivo = "mailer nao processou"
                         salvar_erro(data_json, fundo, motivo)
-                        print(f"    [{fundo}] ERRO - {motivo}")
+                        print(f"    [{fundo}] ERRO - {motivo} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                        if bloqueou:
+                            print(f"    [{fundo}] PARADO - nao tenta mais hoje")
                 else:
+                    bloqueou = registrar_falha(fundo)
                     motivo = "script falhou (sem resultado)"
                     salvar_erro(data_json, fundo, motivo)
-                    print(f"    [{fundo}] ERRO - {motivo}")
+                    print(f"    [{fundo}] ERRO - {motivo} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                    if bloqueou:
+                        print(f"    [{fundo}] PARADO - nao tenta mais hoje")
 
             except subprocess.TimeoutExpired:
+                bloqueou = registrar_falha(fundo)
                 motivo = "timeout (5 min)"
                 salvar_erro(data_json, fundo, motivo)
-                print(f"    [{fundo}] TIMEOUT (5 min)")
+                print(f"    [{fundo}] TIMEOUT (5 min) (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                if bloqueou:
+                    print(f"    [{fundo}] PARADO - nao tenta mais hoje")
             except Exception as e:
+                bloqueou = registrar_falha(fundo)
                 motivo = str(e)
                 salvar_erro(data_json, fundo, motivo)
-                print(f"    [{fundo}] ERRO: {e}")
+                print(f"    [{fundo}] ERRO: {e} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                if bloqueou:
+                    print(f"    [{fundo}] PARADO - nao tenta mais hoje")
 
     # 6. Mover emails processados para pasta COTAS
     # So move se TODOS os fundos do email foram processados
@@ -337,14 +456,15 @@ def main():
     print("=" * 60)
     print("  ROBO DE MAILERS - COTAS DIARIAS")
     print(f"  Intervalo: {INTERVALO_MINUTOS} minutos")
+    print(f"  Max falhas/fundo: {MAX_FALHAS_POR_FUNDO}")
+    print(f"  Watchdog: {TIMEOUT_CICLO_SEG}s")
     print(f"  Mailer: {SCRIPT_MAILER}")
     print(f"  Diretorio: {DIRETORIO}")
+    print(f"  PID: {os.getpid()}")
     print("=" * 60)
     print()
-    print("  O robo ira monitorar sua caixa de entrada do Outlook.")
-    print("  Quando encontrar emails de aprovacao de carteiras,")
-    print("  ira gerar os mailers automaticamente e abrir como")
-    print("  rascunho para voce revisar e clicar ENVIAR.")
+    print("  REGRA: todos os emails sao RASCUNHO (Display).")
+    print("  NUNCA envia direto. Voce revisa e clica Enviar.")
     print()
     print("  ADMs monitorados: Bradesco, BTG, BNYM, Itau, XP")
     print()
@@ -353,13 +473,25 @@ def main():
 
     while True:
         try:
+            # Watchdog: se o ciclo travar > TIMEOUT_CICLO_SEG, mata o processo
+            # O auto_dash.bat ou Task Scheduler reinicia automaticamente
+            watchdog_iniciar()
             processar_ciclo()
+            watchdog_cancelar()
         except KeyboardInterrupt:
+            watchdog_cancelar()
             print("\n\nRobo encerrado pelo usuario.")
             break
         except Exception as e:
+            watchdog_cancelar()
             print(f"\n  ERRO NO CICLO: {e}")
             traceback.print_exc()
+
+        # Atualizar timestamp do lock para o watchdog de instancias externas
+        try:
+            os.utime(LOCK_FILE, None)
+        except:
+            pass
 
         agora = datetime.now().strftime('%H:%M:%S')
         print(f"\n  [{agora}] Proximo ciclo em {INTERVALO_MINUTOS} minutos...")
