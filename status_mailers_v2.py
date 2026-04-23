@@ -299,6 +299,22 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# Banner grande se o robo estiver Parado (> 10 min sem atividade)
+if robo_estado == "Parado":
+    st.markdown(f"""
+    <div style="background:#f8d7da; border-left:5px solid #dc3545;
+                padding:14px 18px; border-radius:6px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; color:#721c24;">
+        🚨 Robô PARADO - última verificação: {robo_ultima}
+      </div>
+      <div style="font-size:12px; color:#721c24; margin-top:6px;">
+        O robô não está processando emails de aprovação. Verifique se o processo Python esta
+        ativo (Gerenciador de Tarefas) ou reinicie via mailer_robo.bat na pasta Startup.
+        Um rascunho de alerta deve ter sido criado no seu Outlook pelo watchdog_robo.py.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ── LOG DO ROBÔ ──────────────────────────────────────────────────────────────
 if os.path.exists(ROBO_LOG):
     with st.expander("📋 Log do robô"):
