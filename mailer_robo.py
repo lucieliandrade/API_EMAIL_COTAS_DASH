@@ -60,6 +60,13 @@ FUNDOS_MANUAIS = {
     "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
     "CAPITANIA FCOPEL",  # alias do FCopel: nome usado no email de aprovacao do Itau
 }
+
+# Fundos Site sem template: enviados pelo proprio site de batimento, sem rascunho
+# automatico. Sem template xlsx, o mailer crasha se tentar processar - entao pula.
+FUNDOS_SITE_SEM_MAILER = {
+    "CAPIT REIT FI", "CAPIT MULTIPREV", "CAPIT PREMIUM",
+    "CAPIT PREV FDR", "CAPITANIA TOP",
+}
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
 LOCK_FILE = os.path.join(SCRIPT_DIR, "mailer_robo.lock")
@@ -593,6 +600,8 @@ def processar_ciclo():
         for f in e['fundos']:
             if f in FUNDOS_MANUAIS:
                 continue  # fundo manual — enviado por PDF, nao pelo mailer
+            if f in FUNDOS_SITE_SEM_MAILER:
+                continue  # fundo Site sem template - enviado pelo proprio site, nao pelo mailer
             if f not in datas_fundos[data_ref_json]['fundos']:
                 datas_fundos[data_ref_json]['fundos'].append(f)
         datas_fundos[data_ref_json]['emails'].append(e)
