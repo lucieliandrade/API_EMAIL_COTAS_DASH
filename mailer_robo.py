@@ -269,6 +269,71 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
         json.dump(erros, f, ensure_ascii=False, indent=2)
 
 
+################################## CONTROLE DE TENTATIVAS (IDEMPOTENCIA) ##################################
+# Arquivo tentativas_{data}.json: {fundo: {iniciado: iso}}
+# - Gravado ANTES de chamar o subprocess do mailer.
+# - Removido DEPOIS que o robo confirmou um resultado (ok / aguardando dado / erro permanente).
+# - Se o robo morre no meio (crash, watchdog, energia), o fundo fica com tentativa registrada
+#   SEM processado correspondente -> tentativa ORFA.
+# - Tentativas orfas JAMAIS sao reprocessadas automaticamente. Requerem revisao humana.
+#   Usuario verifica se o rascunho foi aberto no Outlook:
+#     - Se foi: marca processados_*.json manualmente (ou apaga tentativas_*.json do fundo).
+#     - Se nao foi: apaga tentativas_*.json do fundo - robo tenta de novo no proximo ciclo.
+# Isso garante a regra "NUNCA duplicar" mesmo em cenarios extremos.
+
+def _path_tentativas(data_ref_yyyymmdd):
+    pasta_json = os.path.join(DIRETORIO, "json")
+    os.makedirs(pasta_json, exist_ok=True)
+    return os.path.join(pasta_json, f"tentativas_{data_ref_yyyymmdd}.json")
+
+def carregar_tentativas(data_ref_yyyymmdd):
+    p = _path_tentativas(data_ref_yyyymmdd)
+    if os.path.exists(p):
+        with open(p, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def registrar_tentativa(data_ref_yyyymmdd, fundo):
+    """Grava que o robo esta iniciando uma tentativa para este fundo.
+    Deve ser chamado ANTES do subprocess.run do mailer."""
+    t = carregar_tentativas(data_ref_yyyymmdd)
+    t[fundo] = {"iniciado": datetime.now().isoformat(timespec='seconds')}
+    with open(_path_tentativas(data_ref_yyyymmdd), 'w', encoding='utf-8') as f:
+        json.dump(t, f, ensure_ascii=False, indent=2)
+
+def remover_tentativa(data_ref_yyyymmdd, fundo):
+    """Remove o registro de tentativa (processamento concluido com resultado conhecido)."""
+    t = carregar_tentativas(data_ref_yyyymmdd)
+    if fundo in t:
+        del t[fundo]
+        with open(_path_tentativas(data_ref_yyyymmdd), 'w', encoding='utf-8') as f:
+            json.dump(t, f, ensure_ascii=False, indent=2)
+
+def tentativa_orfa(data_ref_yyyymmdd, fundo):
+    """True se o fundo tem tentativa iniciada mas nao esta em processados."""
+    t = carregar_tentativas(data_ref_yyyymmdd)
+    if fundo not in t:
+        return False
+    return fundo not in carregar_processados(data_ref_yyyymmdd)
+
+def listar_orfas_todas_datas():
+    """Retorna lista de (data_ref, fundo, dict_info) para todas as tentativas orfas."""
+    pasta_json = os.path.join(DIRETORIO, "json")
+    if not os.path.isdir(pasta_json):
+        return []
+    orfas = []
+    for nome in os.listdir(pasta_json):
+        if not nome.startswith("tentativas_") or not nome.endswith(".json"):
+            continue
+        data_ref = nome[len("tentativas_"):-len(".json")]
+        t = carregar_tentativas(data_ref)
+        procs = carregar_processados(data_ref)
+        for fundo, info in t.items():
+            if fundo not in procs:
+                orfas.append((data_ref, fundo, info))
+    return orfas
+
+
 ################################## CONTROLE DE AGUARDANDO DADO ##################################
 
 def _path_aguardando(data_ref_yyyymmdd):
@@ -565,6 +630,13 @@ def processar_ciclo():
                 print(f"\n    [{fundo}] JA PROCESSADO (pulando)")
                 continue
 
+            # REGRA DE IDEMPOTENCIA: se ha tentativa iniciada sem conclusao -> ORFA.
+            # NUNCA reprocessa automaticamente. Requer revisao humana para evitar duplicidade.
+            if tentativa_orfa(data_json, fundo):
+                print(f"\n    [{fundo}] ORFA - tentativa anterior sem resultado. Revisar Outlook manualmente.")
+                print(f"    [{fundo}] Para destravar: deletar entrada em tentativas_{data_json}.json (ou o arquivo inteiro).")
+                continue
+
             resultado_path = os.path.join(DIRETORIO, "json", f"resultado_{data_json}_{datetime.now().strftime('%H%M%S')}.json")
 
             cmd = [
@@ -576,6 +648,10 @@ def processar_ciclo():
             ]
 
             print(f"\n    [{fundo}] Processando...")
+
+            # Grava tentativa ANTES do subprocess para garantir idempotencia
+            # mesmo que o robo seja morto no meio da execucao.
+            registrar_tentativa(data_json, fundo)
 
             try:
                 subprocess.run(cmd, timeout=300)  # 5 min por fundo
@@ -597,6 +673,7 @@ def processar_ciclo():
                     if fundo in fundos_ok:
                         salvar_processados(data_json, [fundo])
                         remover_aguardando(data_json, fundo)  # cota chegou, sai do aguardando
+                        remover_tentativa(data_json, fundo)   # tentativa concluida com sucesso
                         print(f"    [{fundo}] OK")
                     else:
                         motivo_real = erros_motivo.get(fundo, "mailer nao processou (sem motivo reportado)")
@@ -605,33 +682,40 @@ def processar_ciclo():
                         if eh_dado_ausente(motivo_real):
                             registrar_aguardando(data_json, fundo, motivo_real)  # timestamp da primeira deteccao
                             salvar_erro(data_json, fundo, f"AGUARDANDO DADO para COTAS_CAP: {motivo_real}")
+                            remover_tentativa(data_json, fundo)  # resultado conhecido (nao concluiu mas nao eh orfa)
                             print(f"    [{fundo}] AGUARDANDO DADO para COTAS_CAP - {motivo_real}")
                         else:
                             bloqueou = registrar_falha(fundo)
                             salvar_erro(data_json, fundo, motivo_real)
+                            remover_tentativa(data_json, fundo)  # resultado conhecido, nao eh orfa
                             print(f"    [{fundo}] ERRO - {motivo_real} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
                             if bloqueou:
                                 print(f"    [{fundo}] PARADO - nao tenta mais hoje")
                 else:
+                    # Subprocess terminou sem gerar o arquivo de resultado.
+                    # Pode significar crash no meio - mantem tentativa como ORFA para revisao humana.
                     bloqueou = registrar_falha(fundo)
-                    motivo = "script falhou (sem resultado)"
+                    motivo = "script falhou (sem resultado) - tentativa mantida como ORFA (revisar Outlook)"
                     salvar_erro(data_json, fundo, motivo)
+                    # NAO remove tentativa - pode ter chegado a abrir rascunho parcial.
                     print(f"    [{fundo}] ERRO - {motivo} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
                     if bloqueou:
                         print(f"    [{fundo}] PARADO - nao tenta mais hoje")
 
             except subprocess.TimeoutExpired:
                 bloqueou = registrar_falha(fundo)
-                motivo = "timeout (5 min)"
+                motivo = "timeout (5 min) - tentativa mantida como ORFA (revisar Outlook)"
                 salvar_erro(data_json, fundo, motivo)
-                print(f"    [{fundo}] TIMEOUT (5 min) (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                # NAO remove tentativa - mailer pode ter travado ja com rascunho aberto
+                print(f"    [{fundo}] TIMEOUT (5 min) ORFA (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
                 if bloqueou:
                     print(f"    [{fundo}] PARADO - nao tenta mais hoje")
             except Exception as e:
                 bloqueou = registrar_falha(fundo)
-                motivo = str(e)
+                motivo = f"{e} - tentativa mantida como ORFA"
                 salvar_erro(data_json, fundo, motivo)
-                print(f"    [{fundo}] ERRO: {e} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                # NAO remove tentativa - estado desconhecido
+                print(f"    [{fundo}] ERRO: {e} ORFA (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
                 if bloqueou:
                     print(f"    [{fundo}] PARADO - nao tenta mais hoje")
 
@@ -676,6 +760,22 @@ def main():
     print()
     print("  Para parar: Ctrl+C")
     print("=" * 60)
+
+    # Alerta de tentativas orfas no startup (robo pode ter sido morto em execucao anterior)
+    try:
+        orfas = listar_orfas_todas_datas()
+        if orfas:
+            print()
+            print("!" * 60)
+            print(f"  ATENCAO: {len(orfas)} tentativa(s) ORFA(S) detectada(s) no disco:")
+            for data_ref, fundo, info in orfas:
+                print(f"    - {fundo} (ref {data_ref}) iniciada em {info.get('iniciado','?')}")
+            print("  Essas tentativas NAO serao reprocessadas automaticamente.")
+            print("  Revisar no Outlook: se o rascunho foi aberto, marcar como processado.")
+            print("  Para destravar um fundo: deletar entrada em tentativas_YYYYMMDD.json.")
+            print("!" * 60)
+    except Exception as e:
+        print(f"  Aviso: falha ao listar orfas ({e})")
 
     while True:
         try:

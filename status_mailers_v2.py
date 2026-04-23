@@ -365,6 +365,7 @@ horarios   = {}
 timestamps = {}   # {d_str: {fundo: {"dt": datetime, "atrasado": bool}}}
 manuais_aprovados = {}  # {d_str: set de fundos manuais aprovados}
 aguardando = {}   # {d_str: {fundo: {"desde": datetime, "motivo": str}}} - cota nao chegou no banco
+orfas      = {}   # {d_str: {fundo: {"iniciado": datetime}}} - tentativa sem resultado, requer revisao
 
 for d in dias:
     d_str = d.strftime("%Y%m%d")
@@ -407,6 +408,18 @@ for d in dias:
             pass
     aguardando[d_str] = _aguard_dia
 
+    # Carregar orfas: tentativa iniciada sem resultado. Precisa revisao humana.
+    _tent_raw = _load("tentativas")
+    _orfas_dia = {}
+    # So e orfa se NAO esta em processados. Processados vem do PDF abaixo (ver bloco else),
+    # entao aqui carregamos a lista bruta e filtramos apos.
+    for _f, _info in (_tent_raw or {}).items():
+        try:
+            _orfas_dia[_f] = {"iniciado": datetime.fromisoformat(_info["iniciado"])}
+        except Exception:
+            pass
+    orfas[d_str] = _orfas_dia
+
     if d.date() in feriados_br:
         status[d_str]     = "feriado"
         erros[d_str]      = {}
@@ -438,6 +451,8 @@ for d in dias:
             if fs not in processados and fs not in _aguard_dia:
                 processados.add(fs)
         status[d_str]     = processados
+        # Filtrar orfas: se fundo ja esta em processados, nao eh mais orfa
+        orfas[d_str] = {f: info for f, info in orfas[d_str].items() if f not in processados}
         erros[d_str]      = _load("erros")
         # Adicionar erros de validação de PDFs manuais
         for fundo_erro, motivo in _aprov_manual_erros.items():
@@ -454,8 +469,31 @@ for d in dias:
 total = len(fundos)
 
 
-# ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
+# ── BANNER: TENTATIVAS ORFAS (REQUER REVISAO HUMANA) ─────────────────────────
 _hoje_str = today.strftime("%Y%m%d")
+_orfas_hoje = orfas.get(_hoje_str, {})
+if _orfas_hoje:
+    _linhas_orfas = []
+    for _f, _info in sorted(_orfas_hoje.items()):
+        _linhas_orfas.append(f"<b>{_f}</b> (iniciada {_info['iniciado'].strftime('%H:%M')})")
+    st.markdown(f"""
+    <div style="background:#f8d7da; border-left:5px solid #dc3545;
+                padding:14px 18px; border-radius:6px; margin-bottom:16px;">
+      <div style="font-size:15px; font-weight:700; color:#721c24;">
+        🚨 {len(_orfas_hoje)} tentativa(s) ORFA(S) - requerem revisao humana
+      </div>
+      <div style="font-size:12px; color:#721c24; margin-top:6px;">
+        {', '.join(_linhas_orfas)}
+      </div>
+      <div style="font-size:11px; color:#721c24; margin-top:8px; font-style:italic;">
+        O robo comecou a processar esses fundos mas foi interrompido antes de confirmar
+        o resultado. Verificar no Outlook se o rascunho foi aberto. Para destravar:
+        deletar a entrada em tentativas_{_hoje_str}.json.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
 _aguard_hoje = aguardando.get(_hoje_str, {})
 if _aguard_hoje:
     _linhas = []
@@ -603,7 +641,9 @@ for fundo in fundos_filtrados:
                 hora = ts["dt"].strftime("%H:%M") if ts else ""
                 linha[col] = f"✅ {hora}" if hora else "✅"
         else:
-            if fundo in MANUAIS_LISTA and fundo in manuais_aprovados.get(d_str, set()):
+            if fundo in orfas.get(d_str, {}):
+                linha[col] = "🚨 ORFA - revisar Outlook"
+            elif fundo in MANUAIS_LISTA and fundo in manuais_aprovados.get(d_str, set()):
                 linha[col] = "ENVIAR"
             elif fundo in aguardando.get(d_str, {}):
                 info_ag = aguardando[d_str][fundo]
@@ -621,7 +661,9 @@ if df_tab.empty:
 else:
     def colorir(val):
         v = str(val)
-        if v.startswith("⏳"):
+        if v.startswith("🚨"):
+            return "background-color:#f8d7da; color:#721c24; text-align:center; font-size:11px; font-weight:700"
+        elif v.startswith("⏳"):
             return "background-color:#fed7aa; color:#9a3412; text-align:center; font-size:12px; font-weight:600"
         elif v.startswith("⚠️"):
             return "background-color:#fef3c7; color:#92400e; text-align:center; font-size:12px; font-weight:600"
