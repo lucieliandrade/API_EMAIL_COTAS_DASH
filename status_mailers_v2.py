@@ -17,9 +17,15 @@ COR_PRIM  = "#1C57A8"
 ROBO_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robo_log.txt")
 
 MANUAIS_LISTA = [
-    "FCopel", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT",
+    "CAPITANIA FCOPEL", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT",
     "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
 ]
+
+# Mapa de nomes antigos (em JSONs do scan_outlook) para o nome exibido no dash.
+# Usado ao ler aprovados_*.json para normalizar nomes historicos.
+DASH_DISPLAY_NAME = {
+    "FCopel": "CAPITANIA FCOPEL",
+}
 
 
 st.set_page_config(page_title="RI | Dash Cotas", layout="wide", page_icon="📬")
@@ -191,7 +197,6 @@ def get_fundos():
     df = pd.read_excel(TIPO_FUNDOS, usecols="A,E,F,I,J,K,L")
     df = df[df["Encerrado"].isna() & df["modelo_mailer"].notna()].copy()
     df = df[~df["fundo"].isin(["PETROS RFCP"])]
-    df["fundo"] = df["fundo"].replace("CAPITANIA FCOPEL", "FCopel")
     df["ADM"] = df["ADM"].fillna("Outro")
     df["Tipo"] = "Auto"
     # Site com template: robo gera rascunho, dash mostra como Site
@@ -201,7 +206,7 @@ def get_fundos():
     df.loc[df["fundo"].isin(fundos_site), "Tipo"] = "Site"
     # Fundos de envio manual e Site sem template
     extras = pd.DataFrame([
-        {"fundo": "FCopel",          "ADM": "Itau",     "Tipo": "Manual"},
+        {"fundo": "CAPITANIA FCOPEL","ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "FCopel_Imob",     "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "Sabesprev",       "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "CAPITANIA REIT",  "ADM": "BNYM",     "Tipo": "Manual"},
@@ -364,9 +369,13 @@ for d in dias:
     if os.path.exists(_aprov_path):
         with open(_aprov_path, "r", encoding="utf-8") as f:
             _aprov_data = json.load(f)
-            _aprov_manual = set(_aprov_data.get("manual", []))
+            # Normaliza nomes internos -> nomes exibidos no dash (ex: FCopel -> CAPITANIA FCOPEL)
+            _aprov_manual = set(DASH_DISPLAY_NAME.get(m, m) for m in _aprov_data.get("manual", []))
             _aprov_site = set(_aprov_data.get("site", []))
-            _aprov_manual_erros = _aprov_data.get("manual_erros", {})
+            _aprov_manual_erros = {
+                DASH_DISPLAY_NAME.get(k, k): v
+                for k, v in _aprov_data.get("manual_erros", {}).items()
+            }
     manuais_aprovados[d_str] = _aprov_manual
 
     # Carregar aguardando (fundos com cota ausente no banco COTAS_CAP)
