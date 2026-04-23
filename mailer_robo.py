@@ -36,14 +36,17 @@ ALERTA_COBRANCA_MINUTOS = 25        # apos este tempo aguardando, gera o PRIMEIR
 ALERTA_COBRANCA_INTERVALO_MIN = 120 # apos o primeiro, gera novo rascunho a cada X min se ainda tiver pendente
 ALERTA_COBRANCA_EMAIL = "lucieli.andrade@capitaniainvestimentos.com.br"  # destinatario do rascunho
 
-# Motivos de erro do mailer que indicam "dado ausente no banco" (nao culpa do robo/codigo).
-# Esses erros NAO contam como falha permanente: quando o dado aparecer, o robo reprocessa automaticamente.
+# Motivos de erro do mailer que indicam "dado ausente/incompleto no banco" (nao culpa do robo/codigo).
+# Esses erros NAO contam como falha permanente: quando o dado chegar/for completado,
+# o robo reprocessa automaticamente.
 PADROES_DADO_AUSENTE = (
     "não consta no COTAS_CAP",
     "nao consta no COTAS_CAP",
     "sem dados para o dia",
     "igual a 0 ou NaN no COTAS_CAP",
     "valores zerados na tabela",
+    "Carteira não bate com COTAS_CAP",  # batimento falhou - dado pode estar parcial no banco
+    "Carteira nao bate com COTAS_CAP",
 )
 
 def eh_dado_ausente(motivo):
@@ -73,6 +76,7 @@ FUNDOS_SITE_SEM_MAILER = {
 # viram erro, nao aparecem no dash.
 FUNDOS_IGNORAR = {
     "CAPITANIA INFRA4", "CAPITANIA INFRA5", "CAPITANIA INFRA6",
+    "CAPITANIA INFRAFIC", "INFRA Y FIC",
     "CPDI_1",
 }
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
