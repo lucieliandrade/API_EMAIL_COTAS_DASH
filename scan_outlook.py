@@ -5,8 +5,9 @@ Gera aprovados_{YYYYMMDD}.json na pasta json/ com:
 - site: fundos Site aprovados (email "Carteiras Aprovadas")
 - manual: fundos Manual enviados (email "COTA DIARIA")
 
-Executar periodicamente ou antes de atualizar o dash.
-NAO envia nada. Apenas leitura.
+Fluxo manuais: encontra na inbox, valida PDF, move para pasta COTAS automaticamente.
+Tambem escaneia pasta COTAS para pegar emails ja movidos.
+NAO envia nada. Apenas leitura + organizacao.
 """
 
 import win32com.client as win32
@@ -22,7 +23,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_DIR = r"Z:\Relações com Investidores - NOVO\codigos\cotas\json"
 
 MANUAIS_MAPA = {
-    "FCopel":          {"pdf": "FCOPEL FIF MULTIMERCADO - CP I RL"},
+    "CAPITANIA FCOPEL":{"pdf": "FCOPEL FIF MULTIMERCADO - CP I RL"},
     "FCopel_Imob":     {"pdf": "FCOPEL FIF MULTIMERCADO IMOB I RL"},
     "Sabesprev":       {"pdf": "SABESPREV CAPITÂNIA MERCADO IMOB. FIF MULT. CP RL"},
     "CAPITANIA REIT":  {"pdf": "CAPITÂNIA REIT MASTER FIC FIF MM RL"},
@@ -104,6 +105,16 @@ def validar_pdf_manual(msg, d_ref):
             os.remove(tmp)
 
 
+def _obter_pasta_cotas(inbox):
+    """Retorna a pasta COTAS do Outlook, ou None se nao encontrar."""
+    for nomes in [("***RI_MIDDLE", "COTAS"), ("RI_MIDDLE", "COTAS")]:
+        try:
+            return inbox.Folders(nomes[0]).Folders(nomes[1])
+        except:
+            continue
+    return None
+
+
 def scan():
     d_ref = ref_de_hoje()
     hoje = datetime.today().date()
@@ -111,47 +122,69 @@ def scan():
     outlook = win32.Dispatch('Outlook.Application')
     ns = outlook.GetNamespace("MAPI")
     inbox = ns.GetDefaultFolder(6)
-    msgs = inbox.Items
-    msgs.Sort("[ReceivedTime]", True)
+    pasta_cotas = _obter_pasta_cotas(inbox)
+
+    # Escaneia inbox + pasta COTAS (emails ja movidos)
+    pastas = [("inbox", inbox)]
+    if pasta_cotas:
+        pastas.append(("cotas", pasta_cotas))
 
     site_aprovados = set()
     manual_enviados = set()
     manual_erros = {}
+    emails_para_mover = []  # emails manuais validados encontrados na inbox
 
-    for msg in msgs:
-        try:
-            if msg.ReceivedTime.date() < hoje:
-                break
-            if msg.ReceivedTime.date() != hoje:
+    for nome_pasta, pasta in pastas:
+        msgs = pasta.Items
+        msgs.Sort("[ReceivedTime]", True)
+
+        for msg in msgs:
+            try:
+                if msg.ReceivedTime.date() < hoje:
+                    break
+                if msg.ReceivedTime.date() != hoje:
+                    continue
+                subj = str(msg.Subject)
+
+                # Site: email "Carteiras Aprovadas"
+                if 'Carteiras Aprovadas' in subj and 'Sistema Backoffice' in subj:
+                    body = str(msg.Body)
+                    match = re.search(r'Carteiras Aprovadas\s*(.*?)Atenciosamente', body, re.DOTALL)
+                    if match:
+                        linhas = match.group(1).strip().split('\n')
+                        for l in linhas:
+                            f = l.strip()
+                            if f and f in FUNDOS_SITE:
+                                site_aprovados.add(f)
+
+                # Manual: email "COTA DIARIA" + validação do PDF anexo
+                if 'COTA' in subj.upper() and msg.Attachments.Count > 0:
+                    for i in range(1, msg.Attachments.Count + 1):
+                        att_nome = msg.Attachments.Item(i).FileName.upper()
+                        for nome_curto, mapa in MANUAIS_MAPA.items():
+                            if nome_curto in manual_enviados:
+                                continue
+                            if mapa["pdf"].upper() in att_nome:
+                                ok, motivo = validar_pdf_manual(msg, d_ref)
+                                if ok:
+                                    manual_enviados.add(nome_curto)
+                                    # Se encontrou na inbox, agendar para mover para COTAS
+                                    if nome_pasta == "inbox" and pasta_cotas:
+                                        emails_para_mover.append((msg, nome_curto))
+                                else:
+                                    manual_erros[nome_curto] = motivo
+                                    print(f"  BLOQUEADO: {nome_curto} - {motivo}")
+
+            except:
                 continue
-            subj = str(msg.Subject)
 
-            # Site: email "Carteiras Aprovadas"
-            if 'Carteiras Aprovadas' in subj and 'Sistema Backoffice' in subj:
-                body = str(msg.Body)
-                match = re.search(r'Carteiras Aprovadas\s*(.*?)Atenciosamente', body, re.DOTALL)
-                if match:
-                    linhas = match.group(1).strip().split('\n')
-                    for l in linhas:
-                        f = l.strip()
-                        if f and f in FUNDOS_SITE:
-                            site_aprovados.add(f)
-
-            # Manual: email "COTA DIARIA" + validação do PDF anexo
-            if 'COTA' in subj.upper() and msg.Attachments.Count > 0:
-                for i in range(1, msg.Attachments.Count + 1):
-                    att_nome = msg.Attachments.Item(i).FileName.upper()
-                    for nome_curto, mapa in MANUAIS_MAPA.items():
-                        if mapa["pdf"].upper() in att_nome:
-                            ok, motivo = validar_pdf_manual(msg, d_ref)
-                            if ok:
-                                manual_enviados.add(nome_curto)
-                            else:
-                                manual_erros[nome_curto] = motivo
-                                print(f"  BLOQUEADO: {nome_curto} - {motivo}")
-
-        except:
-            continue
+    # Mover emails manuais validados da inbox para pasta COTAS
+    for msg, nome_curto in emails_para_mover:
+        try:
+            msg.Move(pasta_cotas)
+            print(f"  [MOVIDO] {nome_curto} -> pasta COTAS")
+        except Exception as e:
+            print(f"  Aviso: nao moveu {nome_curto}: {e}")
 
     resultado = {
         "data_ref": d_ref,
