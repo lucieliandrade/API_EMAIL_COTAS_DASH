@@ -32,7 +32,8 @@ TIMEOUT_CICLO_SEG = 600          # watchdog do ciclo: MAIOR que timeout do subpr
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 
 # Alerta de cobranca quando fundos ficam muito tempo com dado ausente no banco
-ALERTA_COBRANCA_MINUTOS = 25     # apos este tempo aguardando, gera rascunho de cobranca
+ALERTA_COBRANCA_MINUTOS = 25        # apos este tempo aguardando, gera o PRIMEIRO rascunho de cobranca
+ALERTA_COBRANCA_INTERVALO_MIN = 120 # apos o primeiro, gera novo rascunho a cada X min se ainda tiver pendente
 ALERTA_COBRANCA_EMAIL = "lucieli.andrade@capitaniainvestimentos.com.br"  # destinatario do rascunho
 
 # Motivos de erro do mailer que indicam "dado ausente no banco" (nao culpa do robo/codigo).
@@ -309,27 +310,61 @@ def remover_aguardando(data_ref_yyyymmdd, fundo):
         with open(arquivo, 'w', encoding='utf-8') as f:
             json.dump(ag, f, ensure_ascii=False, indent=2)
 
-def alerta_ja_enviado_hoje(data_ref_yyyymmdd):
-    """True se o rascunho de cobranca ja foi criado hoje para essa data de referencia."""
-    return os.path.exists(_path_alerta_cobranca(data_ref_yyyymmdd))
+def carregar_historico_alertas(data_ref_yyyymmdd):
+    """Retorna lista de alertas ja enviados hoje: [{'em': iso, 'fundos': [...]}, ...]"""
+    path = _path_alerta_cobranca(data_ref_yyyymmdd)
+    if not os.path.exists(path):
+        return []
+    with open(path, 'r', encoding='utf-8') as f:
+        dados = json.load(f)
+    # Compatibilidade com formato antigo (dict unico ao inves de lista)
+    if isinstance(dados, dict) and "alertas" in dados:
+        return dados["alertas"]
+    if isinstance(dados, dict) and "enviado_em" in dados:
+        return [{"em": dados["enviado_em"], "fundos": dados.get("fundos", [])}]
+    return []
+
+def deve_enviar_alerta(data_ref_yyyymmdd):
+    """Retorna True se for hora de enviar um novo alerta de cobranca:
+    - Primeiro alerta: nunca foi enviado antes.
+    - Re-cobranca: ultimo alerta foi ha >= ALERTA_COBRANCA_INTERVALO_MIN."""
+    historico = carregar_historico_alertas(data_ref_yyyymmdd)
+    if not historico:
+        return True  # sem alerta anterior, entao dispara
+    # Tempo desde o ultimo alerta
+    try:
+        ultimo = datetime.fromisoformat(historico[-1]["em"])
+    except Exception:
+        return True
+    return (datetime.now() - ultimo).total_seconds() >= ALERTA_COBRANCA_INTERVALO_MIN * 60
 
 def marcar_alerta_enviado(data_ref_yyyymmdd, fundos):
-    """Registra que o rascunho de cobranca foi criado hoje. Evita spam."""
+    """Append de um novo alerta no historico. Permite re-cobrancas a cada ALERTA_COBRANCA_INTERVALO_MIN."""
+    historico = carregar_historico_alertas(data_ref_yyyymmdd)
+    historico.append({
+        "em": datetime.now().isoformat(timespec='seconds'),
+        "fundos": list(fundos),
+    })
     with open(_path_alerta_cobranca(data_ref_yyyymmdd), 'w', encoding='utf-8') as f:
-        json.dump({
-            "enviado_em": datetime.now().isoformat(timespec='seconds'),
-            "fundos": list(fundos),
-        }, f, ensure_ascii=False, indent=2)
+        json.dump({"alertas": historico}, f, ensure_ascii=False, indent=2)
 
-def criar_rascunho_cobranca(data_completa, fundos_aguardando_info):
+def criar_rascunho_cobranca(data_completa, fundos_aguardando_info, tentativa=1):
     """Cria UM rascunho no Outlook com a lista dos fundos pendentes no banco COTAS_CAP.
+    tentativa=1 -> primeiro alerta, tentativa>1 -> re-cobranca.
     REGRA: apenas Display() - nunca Send. Usuario revisa e envia manualmente."""
     try:
         outlook = win32.Dispatch('Outlook.Application')
         mail = outlook.CreateItem(0)  # 0 = MailItem
 
         data_br = datetime.strptime(data_completa, '%Y-%m-%d').strftime('%d/%m')
-        mail.Subject = f"Cotas pendentes no COTAS_CAP - ref {data_br}"
+        if tentativa == 1:
+            mail.Subject = f"Cotas pendentes no COTAS_CAP - ref {data_br}"
+            cabecalho = (f"<p>Os fundos abaixo tiveram carteira aprovada pelo Backoffice mas a cota de "
+                         f"<b>{data_br}</b> ainda nao foi lancada na tabela <b>COTAS_CAP</b> do banco:</p>")
+        else:
+            mail.Subject = f"REITERACAO #{tentativa} - Cotas pendentes no COTAS_CAP - ref {data_br}"
+            cabecalho = (f"<p><b>Reiteracao (tentativa {tentativa}):</b> os fundos abaixo continuam pendentes "
+                         f"de lancamento da cota de <b>{data_br}</b> na tabela <b>COTAS_CAP</b>:</p>")
         mail.To = ALERTA_COBRANCA_EMAIL
 
         linhas_html = []
@@ -342,8 +377,7 @@ def criar_rascunho_cobranca(data_completa, fundos_aguardando_info):
             )
 
         mail.HTMLBody = f"""
-        <p>Os fundos abaixo tiveram carteira aprovada pelo Backoffice mas a cota de <b>{data_br}</b>
-        ainda nao foi lancada na tabela <b>COTAS_CAP</b> do banco:</p>
+        {cabecalho}
         <ul>
             {''.join(linhas_html)}
         </ul>
@@ -369,8 +403,8 @@ def avaliar_alerta_cobranca():
             continue
         data_json = nome[len("aguardando_"):-len(".json")]  # ex: 20260422
 
-        # Ja alertou hoje? Pula.
-        if alerta_ja_enviado_hoje(data_json):
+        # Ja alertou recentemente? Pula. Senao, pode ser primeiro alerta ou re-cobranca.
+        if not deve_enviar_alerta(data_json):
             continue
 
         ag = carregar_aguardando(data_json)
@@ -389,10 +423,12 @@ def avaliar_alerta_cobranca():
 
         # Converter data_json (YYYYMMDD) para YYYY-MM-DD
         data_completa = f"{data_json[:4]}-{data_json[4:6]}-{data_json[6:]}"
-        print(f"\n  [ALERTA] {len(pendentes)} fundo(s) aguardando cota ha mais de {ALERTA_COBRANCA_MINUTOS} min para ref {data_completa}. Criando rascunho de cobranca...")
-        if criar_rascunho_cobranca(data_completa, pendentes):
+        tentativa = len(carregar_historico_alertas(data_json)) + 1
+        rotulo = "cobranca" if tentativa == 1 else f"RE-COBRANCA #{tentativa}"
+        print(f"\n  [ALERTA] {len(pendentes)} fundo(s) aguardando cota para ref {data_completa}. Criando rascunho de {rotulo}...")
+        if criar_rascunho_cobranca(data_completa, pendentes, tentativa=tentativa):
             marcar_alerta_enviado(data_json, pendentes.keys())
-            print(f"  [ALERTA] Rascunho criado no Outlook (Display).")
+            print(f"  [ALERTA] Rascunho criado no Outlook (Display). Proxima re-cobranca em {ALERTA_COBRANCA_INTERVALO_MIN} min se ainda pendente.")
 
 
 ################################## CONTROLE DE FALHAS ##################################
