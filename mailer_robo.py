@@ -67,6 +67,14 @@ FUNDOS_SITE_SEM_MAILER = {
     "CAPIT REIT FI", "CAPIT MULTIPREV", "CAPIT PREMIUM",
     "CAPIT PREV FDR", "CAPITANIA TOP",
 }
+
+# Fundos de OUTROS TIMES: aparecem nos emails de aprovacao BNYM/BTG mas NAO sao
+# responsabilidade do RI. Devem ser completamente ignorados - nao vao pro robo, nao
+# viram erro, nao aparecem no dash.
+FUNDOS_IGNORAR = {
+    "CAPITANIA INFRA4", "CAPITANIA INFRA5", "CAPITANIA INFRA6",
+    "CPDI_1",
+}
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")
 LOCK_FILE = os.path.join(SCRIPT_DIR, "mailer_robo.lock")
@@ -598,6 +606,8 @@ def processar_ciclo():
             }
 
         for f in e['fundos']:
+            if f in FUNDOS_IGNORAR:
+                continue  # fundo de outro time, nao eh responsabilidade do RI
             if f in FUNDOS_MANUAIS:
                 continue  # fundo manual — enviado por PDF, nao pelo mailer
             if f in FUNDOS_SITE_SEM_MAILER:
