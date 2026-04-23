@@ -415,9 +415,11 @@ for d in dias:
         # Manual: check apenas se scan_outlook encontrou email "COTA DIARIA"
         for fm in _aprov_manual:
             processados.add(fm)
-        # Site sem template: check apenas se scan_outlook encontrou email "Aprovadas"
+        # Site sem template: aprovacao no site nao significa envio - so marcar
+        # como processado se nao estiver aguardando dado (cota do banco).
+        # Aprovacao no site + fundo em aguardando = email ainda NAO foi enviado.
         for fs in _aprov_site:
-            if fs not in processados:
+            if fs not in processados and fs not in _aguard_dia:
                 processados.add(fs)
         status[d_str]     = processados
         erros[d_str]      = _load("erros")
