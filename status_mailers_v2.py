@@ -17,7 +17,7 @@ COR_PRIM  = "#1C57A8"
 ROBO_LOG  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "robo_log.txt")
 
 MANUAIS_LISTA = [
-    "CAPITANIA FCOPEL", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT",
+    "CAPITANIA FCOPEL", "FCopel_Imob", "Sabesprev", "CAPITANIA REIT", "PETROS RFCP",
     "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
 ]
 
@@ -210,6 +210,7 @@ def get_fundos():
         {"fundo": "FCopel_Imob",     "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "Sabesprev",       "ADM": "Itau",     "Tipo": "Manual"},
         {"fundo": "CAPITANIA REIT",  "ADM": "BNYM",     "Tipo": "Manual"},
+        {"fundo": "PETROS RFCP",     "ADM": "Bradesco", "Tipo": "Manual"},
         {"fundo": "OPOR IMOB FII",   "ADM": "XP",       "Tipo": "Manual"},
         {"fundo": "OPOR IMOB SUBCLA","ADM": "XP",       "Tipo": "Manual"},
         {"fundo": "OPOR IMOB SUBCLB","ADM": "XP",       "Tipo": "Manual"},
