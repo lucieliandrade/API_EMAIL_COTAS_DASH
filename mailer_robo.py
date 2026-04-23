@@ -739,17 +739,27 @@ def processar_ciclo():
                     print(f"    [{fundo}] PARADO - nao tenta mais hoje")
 
     # 6. Mover emails processados para pasta COTAS
-    # So move se TODOS os fundos do email foram processados
+    # So move se TODOS os fundos do email estao 'tratados' - ou processados pelo mailer,
+    # ou em uma das listas que o robo pula silenciosamente (manuais, site sem template,
+    # fundos ignorados de outros times). Fundos em aguardando COTAS_CAP ainda NAO foram
+    # tratados -> email fica na caixa de entrada ate a cota chegar.
+    tratados_silenciosos = FUNDOS_MANUAIS | FUNDOS_SITE_SEM_MAILER | FUNDOS_IGNORAR
     for data_json, info in datas_fundos.items():
         processados = carregar_processados(data_json)
+        aguardando_dia = set(carregar_aguardando(data_json).keys())
+        fundos_tratados = processados | tratados_silenciosos
         for e in info['emails']:
             fundos_do_email = set(e['fundos'])
-            if fundos_do_email.issubset(processados):
+            pendentes = fundos_do_email - fundos_tratados
+            if not pendentes:
                 try:
                     if mover_email_para_cotas(e['msg']):
                         print(f"  [MOVIDO] Email ADM={e['adm']} para pasta COTAS")
                 except Exception:
                     pass
+            elif not (pendentes - aguardando_dia):
+                # Unico motivo de nao mover: fundos aguardando cota no banco. Log informativo.
+                print(f"  [AGUARDANDO] Email ADM={e['adm']} tem {len(pendentes)} fundo(s) aguardando COTAS_CAP: {sorted(pendentes)}")
 
     # 7. Avaliar se precisa criar rascunho de cobranca (fundos aguardando ha > ALERTA_COBRANCA_MINUTOS)
     try:
