@@ -2088,24 +2088,32 @@ def salvar_pdf(xlsx_path: str):
 ################################## MAILER ##################################
 
 def mailer(fundos_selecionados):
-    """Processa fundos e retorna lista dos que foram processados com sucesso."""
+    """Processa fundos e retorna (lista_ok, dict_erros).
+    dict_erros: {fundo: motivo_str} — o robo classifica o motivo e decide se conta como falha permanente."""
     _fundos_sucesso = []
+    _erros = {}
 
     for f in fundos_selecionados:
 
         # Teste 0: Verifica se as cotas estão corretas.
         if not check_cotas(f)[0]:
-            print(check_cotas(f)[1])
+            motivo = check_cotas(f)[1]
+            print(motivo)
+            _erros[f] = motivo
             continue  # Interrompe o loop imediatamente
 
         # Teste 1: Verifica o benchmark (só é executado se o teste0 tiver sido "ok")
         if check_bench(f):
-            print(f'{f}: Tabela do {fundo_bench[f]} sem dados para o dia {dmenos1}')
+            motivo = f'{f}: Tabela do {fundo_bench[f]} sem dados para o dia {dmenos1}'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         # Teste 3: Verifica o bat_pl.
         if not bat_pl(f):
-            print(f +': PL não bateu')
+            motivo = f + ': PL não bateu'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         # Teste 4: Verifica se há algum NaN no dataframe gerado.
@@ -2113,17 +2121,23 @@ def mailer(fundos_selecionados):
 
         # Teste 2: Verifica o batimento.
         if not batimento(f):
-            print(f +': Carteira não bate com COTAS_CAP')
+            motivo = f + ': Carteira não bate com COTAS_CAP'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         try:
             df = gerador_df(f)
         except:
-            print(f + ': não foi possível gerar a tabela')
+            motivo = f + ': não foi possível gerar a tabela'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         if True in df.isna().any().values.tolist():
-            print(f +': Existem valores NaN na tabela')
+            motivo = f + ': Existem valores NaN na tabela'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         # Validação: checar valores zerados nas colunas numéricas (0.00% = dado faltando)
@@ -2142,13 +2156,16 @@ def mailer(fundos_selecionados):
             for d in detalhes:
                 print(d)
             print(f'  Acao: verificar o dado no banco e rodar novamente.\n')
+            _erros[f] = f'{f}: valores zerados na tabela (dado faltando no banco)'
             continue
 
         # Validação: checar labels duplicados na tabela
         labels = df.iloc[:, 0].astype(str).tolist()
         duplicados = [l for l in labels if labels.count(l) > 1 and l not in ('', 'nan')]
         if duplicados:
-            print(f +f': Labels duplicados na tabela: {set(duplicados)}')
+            motivo = f + f': Labels duplicados na tabela: {set(duplicados)}'
+            print(motivo)
+            _erros[f] = motivo
             continue
 
         out_dir   = Path(rf"{diretorio}\PDFs")
@@ -2272,9 +2289,11 @@ def mailer(fundos_selecionados):
             #     print(f"{f} - Não foi possível imprimir o pdf com o Libreoffice")
 
         except Exception as e:
-            print(f'{f} - Erro: {e}')
+            motivo = f'{f} - Erro: {e}'
+            print(motivo)
+            _erros[f] = motivo
 
-    return _fundos_sucesso
+    return _fundos_sucesso, _erros
 
 
 
@@ -2305,12 +2324,14 @@ if _arg_fundos:
     print()
 
     ##################### MAILER #####################
-    _fundos_ok = mailer(fundos_validos)
+    _fundos_ok, _erros_mailer = mailer(fundos_validos)
 
     ##################### SALVAR RESULTADO #####################
     if _arg_resultado:
+        # Formato novo: dict com ok + erros. Robo le ambos para classificar falha.
+        resultado = {"ok": _fundos_ok, "erros": _erros_mailer}
         with open(_arg_resultado, 'w', encoding='utf-8') as _f:
-            json_lib.dump(_fundos_ok, _f, ensure_ascii=False, indent=2)
+            json_lib.dump(resultado, _f, ensure_ascii=False, indent=2)
         print(f"\nResultado salvo em: {_arg_resultado}")
 
     print(f"\n{'='*60}")

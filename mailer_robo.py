@@ -31,6 +31,23 @@ MAX_FALHAS_POR_FUNDO = 3        # apos 3 falhas seguidas, para de tentar no dia
 TIMEOUT_CICLO_SEG = 600          # watchdog do ciclo: MAIOR que timeout do subprocess (300s), evita matar o robo no meio e causar duplicidade
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 
+# Motivos de erro do mailer que indicam "dado ausente no banco" (nao culpa do robo/codigo).
+# Esses erros NAO contam como falha permanente: quando o dado aparecer, o robo reprocessa automaticamente.
+PADROES_DADO_AUSENTE = (
+    "não consta no COTAS_CAP",
+    "nao consta no COTAS_CAP",
+    "sem dados para o dia",
+    "igual a 0 ou NaN no COTAS_CAP",
+    "valores zerados na tabela",
+)
+
+def eh_dado_ausente(motivo):
+    """True se o motivo indica que um dado externo (cota, benchmark) ainda nao chegou."""
+    if not motivo:
+        return False
+    m = str(motivo)
+    return any(p in m for p in PADROES_DADO_AUSENTE)
+
 # Fundos manuais: enviados por email com PDF, NAO pelo mailer automatico.
 # O robo deve pular esses fundos (scan_outlook.py detecta o envio deles).
 FUNDOS_MANUAIS = {
@@ -399,19 +416,33 @@ def processar_ciclo():
                 # Ler resultado
                 if os.path.exists(resultado_path):
                     with open(resultado_path, 'r', encoding='utf-8') as f:
-                        fundos_ok = json.load(f)
+                        dados_resultado = json.load(f)
                     os.remove(resultado_path)
+
+                    # Compatibilidade: formato novo = dict {ok, erros}; formato antigo = lista
+                    if isinstance(dados_resultado, dict):
+                        fundos_ok = dados_resultado.get("ok", [])
+                        erros_motivo = dados_resultado.get("erros", {})
+                    else:
+                        fundos_ok = dados_resultado
+                        erros_motivo = {}
 
                     if fundo in fundos_ok:
                         salvar_processados(data_json, [fundo])
                         print(f"    [{fundo}] OK")
                     else:
-                        bloqueou = registrar_falha(fundo)
-                        motivo = "mailer nao processou"
-                        salvar_erro(data_json, fundo, motivo)
-                        print(f"    [{fundo}] ERRO - {motivo} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
-                        if bloqueou:
-                            print(f"    [{fundo}] PARADO - nao tenta mais hoje")
+                        motivo_real = erros_motivo.get(fundo, "mailer nao processou (sem motivo reportado)")
+                        # Se for "dado ausente" (cota/benchmark nao chegou no banco), NAO conta como falha permanente.
+                        # O robo vai tentar de novo no proximo ciclo ate o dado aparecer.
+                        if eh_dado_ausente(motivo_real):
+                            salvar_erro(data_json, fundo, f"AGUARDANDO DADO: {motivo_real}")
+                            print(f"    [{fundo}] AGUARDANDO DADO - {motivo_real}")
+                        else:
+                            bloqueou = registrar_falha(fundo)
+                            salvar_erro(data_json, fundo, motivo_real)
+                            print(f"    [{fundo}] ERRO - {motivo_real} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
+                            if bloqueou:
+                                print(f"    [{fundo}] PARADO - nao tenta mais hoje")
                 else:
                     bloqueou = registrar_falha(fundo)
                     motivo = "script falhou (sem resultado)"
