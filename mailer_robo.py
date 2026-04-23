@@ -28,7 +28,7 @@ import ctypes
 
 INTERVALO_MINUTOS = 2
 MAX_FALHAS_POR_FUNDO = 3        # apos 3 falhas seguidas, para de tentar no dia
-TIMEOUT_CICLO_SEG = 120          # se um ciclo travar > 2 min, mata o processo
+TIMEOUT_CICLO_SEG = 600          # watchdog do ciclo: MAIOR que timeout do subprocess (300s), evita matar o robo no meio e causar duplicidade
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 
 # Fundos manuais: enviados por email com PDF, NAO pelo mailer automatico.
