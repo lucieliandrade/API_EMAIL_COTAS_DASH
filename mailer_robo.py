@@ -31,6 +31,10 @@ MAX_FALHAS_POR_FUNDO = 3        # apos 3 falhas seguidas, para de tentar no dia
 TIMEOUT_CICLO_SEG = 600          # watchdog do ciclo: MAIOR que timeout do subprocess (300s), evita matar o robo no meio e causar duplicidade
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 
+# Alerta de cobranca quando fundos ficam muito tempo com dado ausente no banco
+ALERTA_COBRANCA_MINUTOS = 25     # apos este tempo aguardando, gera rascunho de cobranca
+ALERTA_COBRANCA_EMAIL = "lucieli.andrade@capitaniainvestimentos.com.br"  # destinatario do rascunho
+
 # Motivos de erro do mailer que indicam "dado ausente no banco" (nao culpa do robo/codigo).
 # Esses erros NAO contam como falha permanente: quando o dado aparecer, o robo reprocessa automaticamente.
 PADROES_DADO_AUSENTE = (
@@ -264,6 +268,133 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
         json.dump(erros, f, ensure_ascii=False, indent=2)
 
 
+################################## CONTROLE DE AGUARDANDO DADO ##################################
+
+def _path_aguardando(data_ref_yyyymmdd):
+    pasta_json = os.path.join(DIRETORIO, "json")
+    os.makedirs(pasta_json, exist_ok=True)
+    return os.path.join(pasta_json, f"aguardando_{data_ref_yyyymmdd}.json")
+
+def _path_alerta_cobranca(data_ref_yyyymmdd):
+    pasta_json = os.path.join(DIRETORIO, "json")
+    os.makedirs(pasta_json, exist_ok=True)
+    return os.path.join(pasta_json, f"alerta_cobranca_{data_ref_yyyymmdd}.json")
+
+def carregar_aguardando(data_ref_yyyymmdd):
+    """Retorna {fundo: timestamp_iso_primeira_deteccao}."""
+    arquivo = _path_aguardando(data_ref_yyyymmdd)
+    if os.path.exists(arquivo):
+        with open(arquivo, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def registrar_aguardando(data_ref_yyyymmdd, fundo, motivo):
+    """Marca o fundo como aguardando dado. Mantem o timestamp da PRIMEIRA deteccao para calcular o tempo total."""
+    arquivo = _path_aguardando(data_ref_yyyymmdd)
+    ag = carregar_aguardando(data_ref_yyyymmdd)
+    if fundo not in ag:
+        ag[fundo] = {
+            "desde": datetime.now().isoformat(timespec='seconds'),
+            "motivo": motivo,
+        }
+        with open(arquivo, 'w', encoding='utf-8') as f:
+            json.dump(ag, f, ensure_ascii=False, indent=2)
+
+def remover_aguardando(data_ref_yyyymmdd, fundo):
+    """Remove o fundo do aguardando (ex: quando a cota finalmente chegou e o fundo processou OK)."""
+    arquivo = _path_aguardando(data_ref_yyyymmdd)
+    ag = carregar_aguardando(data_ref_yyyymmdd)
+    if fundo in ag:
+        del ag[fundo]
+        with open(arquivo, 'w', encoding='utf-8') as f:
+            json.dump(ag, f, ensure_ascii=False, indent=2)
+
+def alerta_ja_enviado_hoje(data_ref_yyyymmdd):
+    """True se o rascunho de cobranca ja foi criado hoje para essa data de referencia."""
+    return os.path.exists(_path_alerta_cobranca(data_ref_yyyymmdd))
+
+def marcar_alerta_enviado(data_ref_yyyymmdd, fundos):
+    """Registra que o rascunho de cobranca foi criado hoje. Evita spam."""
+    with open(_path_alerta_cobranca(data_ref_yyyymmdd), 'w', encoding='utf-8') as f:
+        json.dump({
+            "enviado_em": datetime.now().isoformat(timespec='seconds'),
+            "fundos": list(fundos),
+        }, f, ensure_ascii=False, indent=2)
+
+def criar_rascunho_cobranca(data_completa, fundos_aguardando_info):
+    """Cria UM rascunho no Outlook com a lista dos fundos pendentes no banco COTAS_CAP.
+    REGRA: apenas Display() - nunca Send. Usuario revisa e envia manualmente."""
+    try:
+        outlook = win32.Dispatch('Outlook.Application')
+        mail = outlook.CreateItem(0)  # 0 = MailItem
+
+        data_br = datetime.strptime(data_completa, '%Y-%m-%d').strftime('%d/%m')
+        mail.Subject = f"Cotas pendentes no COTAS_CAP - ref {data_br}"
+        mail.To = ALERTA_COBRANCA_EMAIL
+
+        linhas_html = []
+        for fundo, info in sorted(fundos_aguardando_info.items()):
+            desde = datetime.fromisoformat(info["desde"])
+            decorrido_min = int((datetime.now() - desde).total_seconds() / 60)
+            linhas_html.append(
+                f"<li><b>{fundo}</b> — aguardando ha {decorrido_min} min "
+                f"(desde {desde.strftime('%H:%M')})</li>"
+            )
+
+        mail.HTMLBody = f"""
+        <p>Os fundos abaixo tiveram carteira aprovada pelo Backoffice mas a cota de <b>{data_br}</b>
+        ainda nao foi lancada na tabela <b>COTAS_CAP</b> do banco:</p>
+        <ul>
+            {''.join(linhas_html)}
+        </ul>
+        <p>Sem a cota no banco, o mailer de cotas diarias nao consegue ser gerado.</p>
+        <p>Enviar para o time responsavel.</p>
+        """
+        mail.Display()  # NUNCA trocar por Send() - usuario revisa e envia manualmente
+        return True
+    except Exception as e:
+        print(f"  ERRO ao criar rascunho de cobranca: {e}")
+        return False
+
+def avaliar_alerta_cobranca():
+    """Verifica todos os arquivos aguardando_*.json e, para cada data com fundos pendentes
+    ha mais de ALERTA_COBRANCA_MINUTOS (e sem alerta enviado hoje), cria um rascunho."""
+    pasta_json = os.path.join(DIRETORIO, "json")
+    if not os.path.isdir(pasta_json):
+        return
+
+    agora = datetime.now()
+    for nome in os.listdir(pasta_json):
+        if not nome.startswith("aguardando_") or not nome.endswith(".json"):
+            continue
+        data_json = nome[len("aguardando_"):-len(".json")]  # ex: 20260422
+
+        # Ja alertou hoje? Pula.
+        if alerta_ja_enviado_hoje(data_json):
+            continue
+
+        ag = carregar_aguardando(data_json)
+        # Filtrar apenas os fundos com >= ALERTA_COBRANCA_MINUTOS de espera
+        pendentes = {}
+        for fundo, info in ag.items():
+            try:
+                desde = datetime.fromisoformat(info["desde"])
+            except Exception:
+                continue
+            if (agora - desde).total_seconds() >= ALERTA_COBRANCA_MINUTOS * 60:
+                pendentes[fundo] = info
+
+        if not pendentes:
+            continue
+
+        # Converter data_json (YYYYMMDD) para YYYY-MM-DD
+        data_completa = f"{data_json[:4]}-{data_json[4:6]}-{data_json[6:]}"
+        print(f"\n  [ALERTA] {len(pendentes)} fundo(s) aguardando cota ha mais de {ALERTA_COBRANCA_MINUTOS} min para ref {data_completa}. Criando rascunho de cobranca...")
+        if criar_rascunho_cobranca(data_completa, pendentes):
+            marcar_alerta_enviado(data_json, pendentes.keys())
+            print(f"  [ALERTA] Rascunho criado no Outlook (Display).")
+
+
 ################################## CONTROLE DE FALHAS ##################################
 
 _falhas_hoje = {}  # {fundo: contagem} — resetado quando muda o dia
@@ -429,12 +560,14 @@ def processar_ciclo():
 
                     if fundo in fundos_ok:
                         salvar_processados(data_json, [fundo])
+                        remover_aguardando(data_json, fundo)  # cota chegou, sai do aguardando
                         print(f"    [{fundo}] OK")
                     else:
                         motivo_real = erros_motivo.get(fundo, "mailer nao processou (sem motivo reportado)")
                         # Se for "dado ausente" (cota/benchmark nao chegou no banco), NAO conta como falha permanente.
                         # O robo vai tentar de novo no proximo ciclo ate o dado aparecer.
                         if eh_dado_ausente(motivo_real):
+                            registrar_aguardando(data_json, fundo, motivo_real)  # timestamp da primeira deteccao
                             salvar_erro(data_json, fundo, f"AGUARDANDO DADO: {motivo_real}")
                             print(f"    [{fundo}] AGUARDANDO DADO - {motivo_real}")
                         else:
@@ -478,6 +611,12 @@ def processar_ciclo():
                         print(f"  [MOVIDO] Email ADM={e['adm']} para pasta COTAS")
                 except Exception:
                     pass
+
+    # 7. Avaliar se precisa criar rascunho de cobranca (fundos aguardando ha > ALERTA_COBRANCA_MINUTOS)
+    try:
+        avaliar_alerta_cobranca()
+    except Exception as e:
+        print(f"  Aviso: avaliar_alerta_cobranca falhou ({e})")
 
 
 ################################## MAIN ##################################

@@ -343,6 +343,7 @@ erros      = {}
 horarios   = {}
 timestamps = {}   # {d_str: {fundo: {"dt": datetime, "atrasado": bool}}}
 manuais_aprovados = {}  # {d_str: set de fundos manuais aprovados}
+aguardando = {}   # {d_str: {fundo: {"desde": datetime, "motivo": str}}} - cota nao chegou no banco
 
 for d in dias:
     d_str = d.strftime("%Y%m%d")
@@ -367,6 +368,19 @@ for d in dias:
             _aprov_site = set(_aprov_data.get("site", []))
             _aprov_manual_erros = _aprov_data.get("manual_erros", {})
     manuais_aprovados[d_str] = _aprov_manual
+
+    # Carregar aguardando (fundos com cota ausente no banco COTAS_CAP)
+    _aguard_raw = _load("aguardando")
+    _aguard_dia = {}
+    for _f, _info in (_aguard_raw or {}).items():
+        try:
+            _aguard_dia[_f] = {
+                "desde": datetime.fromisoformat(_info["desde"]),
+                "motivo": _info.get("motivo", ""),
+            }
+        except Exception:
+            pass
+    aguardando[d_str] = _aguard_dia
 
     if d.date() in feriados_br:
         status[d_str]     = "feriado"
@@ -411,6 +425,32 @@ for d in dias:
         timestamps[d_str] = ts_dia
 
 total = len(fundos)
+
+
+# ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
+_hoje_str = today.strftime("%Y%m%d")
+_aguard_hoje = aguardando.get(_hoje_str, {})
+if _aguard_hoje:
+    _linhas = []
+    for _f, _info in sorted(_aguard_hoje.items()):
+        _min = int((datetime.now() - _info["desde"]).total_seconds() / 60)
+        _linhas.append(f"<b>{_f}</b> ({_min} min)")
+    _lista_html = ", ".join(_linhas)
+    _total = len(_aguard_hoje)
+    st.markdown(f"""
+    <div style="background:#fed7aa; border-left:5px solid #c2410c;
+                padding:12px 16px; border-radius:6px; margin-bottom:16px;">
+      <div style="font-size:14px; font-weight:700; color:#9a3412; margin-bottom:6px;">
+        ⏳ {_total} fundo(s) aguardando cota ser lancada no banco COTAS_CAP
+      </div>
+      <div style="font-size:12px; color:#7c2d12;">
+        {_lista_html}
+      </div>
+      <div style="font-size:11px; color:#7c2d12; margin-top:6px; font-style:italic;">
+        Apos 25 min, o robo cria automaticamente um rascunho de cobranca no Outlook.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ── CARDS DOS DIAS ────────────────────────────────────────────────────────────
@@ -538,6 +578,10 @@ for fundo in fundos_filtrados:
         else:
             if fundo in MANUAIS_LISTA and fundo in manuais_aprovados.get(d_str, set()):
                 linha[col] = "ENVIAR"
+            elif fundo in aguardando.get(d_str, {}):
+                info_ag = aguardando[d_str][fundo]
+                min_decorridos = int((datetime.now() - info_ag["desde"]).total_seconds() / 60)
+                linha[col] = f"⏳ aguardando {min_decorridos}min"
             else:
                 motivo = erros[d_str].get(fundo, "")
                 linha[col] = f"❌ {motivo}" if motivo else "❌"
@@ -550,7 +594,9 @@ if df_tab.empty:
 else:
     def colorir(val):
         v = str(val)
-        if v.startswith("⚠️"):
+        if v.startswith("⏳"):
+            return "background-color:#fed7aa; color:#9a3412; text-align:center; font-size:12px; font-weight:600"
+        elif v.startswith("⚠️"):
             return "background-color:#fef3c7; color:#92400e; text-align:center; font-size:12px; font-weight:600"
         elif v.startswith("✅"):
             return "background-color:#d4edda; color:#155724; text-align:center; font-size:13px; font-weight:600"
