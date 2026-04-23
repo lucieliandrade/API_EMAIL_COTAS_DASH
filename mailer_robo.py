@@ -568,8 +568,8 @@ def processar_ciclo():
                         # O robo vai tentar de novo no proximo ciclo ate o dado aparecer.
                         if eh_dado_ausente(motivo_real):
                             registrar_aguardando(data_json, fundo, motivo_real)  # timestamp da primeira deteccao
-                            salvar_erro(data_json, fundo, f"AGUARDANDO DADO: {motivo_real}")
-                            print(f"    [{fundo}] AGUARDANDO DADO - {motivo_real}")
+                            salvar_erro(data_json, fundo, f"AGUARDANDO DADO para COTAS_CAP: {motivo_real}")
+                            print(f"    [{fundo}] AGUARDANDO DADO para COTAS_CAP - {motivo_real}")
                         else:
                             bloqueou = registrar_falha(fundo)
                             salvar_erro(data_json, fundo, motivo_real)

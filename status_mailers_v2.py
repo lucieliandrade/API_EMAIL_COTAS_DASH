@@ -592,7 +592,7 @@ for fundo in fundos_filtrados:
             elif fundo in aguardando.get(d_str, {}):
                 info_ag = aguardando[d_str][fundo]
                 min_decorridos = int((datetime.now() - info_ag["desde"]).total_seconds() / 60)
-                linha[col] = f"⏳ aguardando {min_decorridos}min"
+                linha[col] = f"⏳ aguardando COTAS_CAP {min_decorridos}min"
             else:
                 motivo = erros[d_str].get(fundo, "")
                 linha[col] = f"❌ {motivo}" if motivo else "❌"
