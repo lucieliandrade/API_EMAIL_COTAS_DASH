@@ -79,6 +79,7 @@ FUNDOS_IGNORAR = {
     "CAPITANIA INFRAFIC", "INFRA Y FIC",
     "CAPITANIA LOG",
     "CPDI_1", "CPDI F",
+    "FIDC AGRO", "FIDC CREDITO ENERGIA",
     "Capitania Prev Itau FIFE", "Capit_Previdence_Itau_FIFE", "Reit_Prev_FIFE",
 }
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
