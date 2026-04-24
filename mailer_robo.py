@@ -77,6 +77,7 @@ FUNDOS_SITE_SEM_MAILER = {
 FUNDOS_IGNORAR = {
     "CAPITANIA INFRA4", "CAPITANIA INFRA5", "CAPITANIA INFRA6",
     "CAPITANIA INFRAFIC", "INFRA Y FIC",
+    "CAPITANIA LOG",
     "CPDI_1",
     "Capitania Prev Itau FIFE", "Capit_Previdence_Itau_FIFE", "Reit_Prev_FIFE",
 }
