@@ -383,31 +383,12 @@ def render_intrag_esteira():
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        # Tenta abrir a pasta via link file://. Se browser bloquear (padrao
-        # em HTTP), o botao de copiar caminho ao lado funciona como fallback.
-        caminho_url = INTRAG_PASTA_NET.replace('\\', '/')
-        caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
-        st.markdown(f"""
-        <div style='padding-top:10px;display:flex;gap:6px;'>
-          <a href="file:///{caminho_url}" target="_blank" style="
-            flex:1;background:#1C57A8;color:white;border:none;padding:8px 12px;
-            border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
-            text-align:center;text-decoration:none;font-family:Inter,sans-serif;">
-            📁 abrir pasta
-          </a>
-          <button onclick="
-          navigator.clipboard.writeText('{caminho_js}').then(()=>{{
-            this.innerHTML='✅';
-            setTimeout(()=>{{this.innerHTML='📋';}},2000);
-          }});
-          " title="Copiar caminho (cole no Win+R se o link nao abrir)" style="
-          background:#e8edf5;color:#1C57A8;border:none;padding:8px 10px;
-          border-radius:8px;cursor:pointer;font-size:14px;
-          font-family:Inter,sans-serif;">
-          📋
-          </button>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
+        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
+            try:
+                os.startfile(INTRAG_PASTA_NET)
+            except Exception as e:
+                st.warning(f"Falha ao abrir: {e}")
 
     cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
