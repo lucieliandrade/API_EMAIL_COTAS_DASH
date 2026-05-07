@@ -378,50 +378,58 @@ def render_intrag_esteira():
     else:
         s7 = ('fut', '·', 'aguarda step 6')
 
+    # Resumo no titulo do expander
+    todos_steps = [s1, s2, s3, s4, s5, s6, s7]
+    n_ok = sum(1 for s in todos_steps if s[0] == 'ok')
+    n_pend = sum(1 for s in todos_steps if s[0] == 'pend')
+    if not is_dia_util:
+        resumo = "🏖️ fim de semana"
+    elif n_ok == 7:
+        resumo = "✅ 7/7 etapas concluídas"
+    elif n_pend > 0 or n_ok > 0:
+        resumo = f"⏳ {n_ok}/7 etapas concluídas"
+    else:
+        resumo = "⏰ aguardando início"
+
+    label_expander = f"🏦 Esteira INTRAG · Boletas Itaú Vida   —   {resumo}"
+
     st.markdown("<br>", unsafe_allow_html=True)
-    titulo_col, btn_pasta_col, code_col = st.columns([4, 1, 3])
-    with titulo_col:
-        st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
-    with btn_pasta_col:
-        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
+    with st.expander(label_expander, expanded=False):
+        btn_pasta_col, code_col = st.columns([1, 5])
+        with btn_pasta_col:
+            if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
+                try:
+                    os.startfile(INTRAG_PASTA_NET)
+                except Exception as e:
+                    st.warning(f"Falha ao abrir: {e}")
+        with code_col:
+            st.code(INTRAG_PASTA_NET, language=None)
 
-        # Botao 1: abre pasta (so funciona na maquina servidor = Lucieli)
-        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
-            try:
-                os.startfile(INTRAG_PASTA_NET)
-            except Exception as e:
-                st.warning(f"Falha ao abrir: {e}")
+        cols = st.columns(7)
+        _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
+        _intrag_step_card(cols[1], '2', 'TXTs gerados', *s2)
+        _intrag_step_card(cols[2], '3', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
+        _intrag_step_card(cols[3], '4', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
+        _intrag_step_card(cols[4], '5', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
+        _intrag_step_card(cols[5], '6', 'Liquidação', s6[0], s6[1], s6[2])
+        _intrag_step_card(cols[6], '7', 'Arquivo pasta net', *s7)
 
-    with code_col:
-        # Caminho como st.code: widget nativo com botao de copy embutido
-        st.code(INTRAG_PASTA_NET, language=None)
-
-    cols = st.columns(7)
-    _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
-    _intrag_step_card(cols[1], '2', 'TXTs gerados', *s2)
-    _intrag_step_card(cols[2], '3', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
-    _intrag_step_card(cols[3], '4', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
-    _intrag_step_card(cols[4], '5', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
-    _intrag_step_card(cols[5], '6', 'Liquidação', s6[0], s6[1], s6[2])
-    _intrag_step_card(cols[6], '7', 'Arquivo pasta net', *s7)
-
-    if is_dia_util:
-        # Checkboxes manuais (steps 3-6, step 7 e auto)
-        ck_cols = st.columns(7)
-        ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
-        ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
-        for col, chave, marcado in [
-            (ck_cols[2], 'subiu_passivo_itau', s3[3]),
-            (ck_cols[3], 'subiu_ativo_fife', s4[3]),
-            (ck_cols[4], 'subiu_passivo_fife', s5[3]),
-            (ck_cols[5], 'liquidado', s6[3]),
-        ]:
-            with col:
-                novo = st.checkbox('feito', value=marcado, key=f'intrag_{chave}', label_visibility='collapsed')
-                if novo != marcado:
-                    _intrag_marcar(chave, novo)
-                    st.rerun()
-        ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+        if is_dia_util:
+            ck_cols = st.columns(7)
+            ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+            ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+            for col, chave, marcado in [
+                (ck_cols[2], 'subiu_passivo_itau', s3[3]),
+                (ck_cols[3], 'subiu_ativo_fife', s4[3]),
+                (ck_cols[4], 'subiu_passivo_fife', s5[3]),
+                (ck_cols[5], 'liquidado', s6[3]),
+            ]:
+                with col:
+                    novo = st.checkbox('feito', value=marcado, key=f'intrag_{chave}', label_visibility='collapsed')
+                    if novo != marcado:
+                        _intrag_marcar(chave, novo)
+                        st.rerun()
+            ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
 
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
