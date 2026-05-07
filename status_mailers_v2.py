@@ -379,16 +379,28 @@ def render_intrag_esteira():
         s7 = ('fut', '·', 'aguarda step 6')
 
     st.markdown("<br>", unsafe_allow_html=True)
-    titulo_col, btn_intrag_col = st.columns([6, 1])
+    titulo_col, btn_intrag_col = st.columns([5, 2])
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
-        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
-            try:
-                os.startfile(INTRAG_PASTA_NET)
-            except Exception as e:
-                st.warning(f"Falha ao abrir: {e}")
+        # Botao que copia caminho pro clipboard - funciona em qualquer maquina
+        # via JS (navigator.clipboard). Usuario cola no Explorer (Win+R).
+        caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
+        st.markdown(f"""
+        <div style='padding-top:10px'>
+        <button onclick="
+        navigator.clipboard.writeText('{caminho_js}').then(()=>{{
+          this.innerHTML='✅ copiado! cole no Win+R';
+          setTimeout(()=>{{this.innerHTML='📋 copiar caminho da pasta';}},3000);
+        }});
+        " style="
+        background:#1C57A8;color:white;border:none;padding:8px 14px;
+        border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+        width:100%;font-family:Inter,sans-serif;">
+        📋 copiar caminho da pasta
+        </button>
+        </div>
+        """, unsafe_allow_html=True)
 
     cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
