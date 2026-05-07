@@ -383,22 +383,29 @@ def render_intrag_esteira():
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        # Botao que copia caminho pro clipboard - funciona em qualquer maquina
-        # via JS (navigator.clipboard). Usuario cola no Explorer (Win+R).
+        # Tenta abrir a pasta via link file://. Se browser bloquear (padrao
+        # em HTTP), o botao de copiar caminho ao lado funciona como fallback.
+        caminho_url = INTRAG_PASTA_NET.replace('\\', '/')
         caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
         st.markdown(f"""
-        <div style='padding-top:10px'>
-        <button onclick="
-        navigator.clipboard.writeText('{caminho_js}').then(()=>{{
-          this.innerHTML='✅ copiado! cole no Win+R';
-          setTimeout(()=>{{this.innerHTML='📋 copiar caminho da pasta';}},3000);
-        }});
-        " style="
-        background:#1C57A8;color:white;border:none;padding:8px 14px;
-        border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
-        width:100%;font-family:Inter,sans-serif;">
-        📋 copiar caminho da pasta
-        </button>
+        <div style='padding-top:10px;display:flex;gap:6px;'>
+          <a href="file:///{caminho_url}" target="_blank" style="
+            flex:1;background:#1C57A8;color:white;border:none;padding:8px 12px;
+            border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+            text-align:center;text-decoration:none;font-family:Inter,sans-serif;">
+            📁 abrir pasta
+          </a>
+          <button onclick="
+          navigator.clipboard.writeText('{caminho_js}').then(()=>{{
+            this.innerHTML='✅';
+            setTimeout(()=>{{this.innerHTML='📋';}},2000);
+          }});
+          " title="Copiar caminho (cole no Win+R se o link nao abrir)" style="
+          background:#e8edf5;color:#1C57A8;border:none;padding:8px 10px;
+          border-radius:8px;cursor:pointer;font-size:14px;
+          font-family:Inter,sans-serif;">
+          📋
+          </button>
         </div>
         """, unsafe_allow_html=True)
 
