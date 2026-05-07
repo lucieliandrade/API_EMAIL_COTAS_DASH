@@ -383,19 +383,22 @@ def render_intrag_esteira():
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        # Link file:// renderizado em cada browser do usuario.
-        # Se browser do usuario permitir (Edge corporativo geralmente permite
-        # na intranet), abre Explorer na maquina dele.
-        caminho_url = INTRAG_PASTA_NET.replace('\\', '/')
+        # Browser bloqueia file:// em pagina HTTP. Solucao: botao que copia
+        # o caminho pro clipboard via JS. Usuario cola no Win+R.
+        caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
         st.markdown(f"""
         <div style='padding-top:10px'>
-        <a href="file:///{caminho_url}" target="_blank" style="
-          display:block;background:#1C57A8;color:white;border:none;
-          padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;
-          text-align:center;text-decoration:none;font-family:Inter,sans-serif;
-          width:100%;box-sizing:border-box;">
-          📁 abrir pasta
-        </a>
+        <button onclick="
+        navigator.clipboard.writeText('{caminho_js}').then(()=>{{
+          this.innerHTML='✅ caminho copiado! cole no Win+R';
+          setTimeout(()=>{{this.innerHTML='📋 copiar caminho da pasta';}},3000);
+        }});
+        " style="
+        background:#1C57A8;color:white;border:none;padding:9px 14px;
+        border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
+        width:100%;font-family:Inter,sans-serif;">
+        📋 copiar caminho da pasta
+        </button>
         </div>
         """, unsafe_allow_html=True)
 
