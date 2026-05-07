@@ -379,10 +379,10 @@ def render_intrag_esteira():
         s7 = ('fut', '·', 'aguarda step 6')
 
     st.markdown("<br>", unsafe_allow_html=True)
-    titulo_col, btn_intrag_col = st.columns([5, 2])
+    titulo_col, btn_pasta_col, code_col = st.columns([4, 1, 3])
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
-    with btn_intrag_col:
+    with btn_pasta_col:
         st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
 
         # Botao 1: abre pasta (so funciona na maquina servidor = Lucieli)
@@ -392,8 +392,8 @@ def render_intrag_esteira():
             except Exception as e:
                 st.warning(f"Falha ao abrir: {e}")
 
-        # Caminho como st.code: widget nativo do Streamlit com botao de
-        # copy embutido. Garante texto puro sem aspas/escapes.
+    with code_col:
+        # Caminho como st.code: widget nativo com botao de copy embutido
         st.code(INTRAG_PASTA_NET, language=None)
 
     cols = st.columns(7)
