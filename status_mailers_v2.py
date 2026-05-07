@@ -11,6 +11,12 @@ import holidays
 JSON_DIR  = r"Z:\Relações com Investidores - NOVO\codigos\cotas\json"
 PDF_DIR   = r"Z:\Relações com Investidores - NOVO\codigos\cotas\PDFs"
 TIPO_FUNDOS = r"X:\BDM\Novo Modelo de Carteiras\Tipo_Fundos.xlsx"
+
+# INTRAG (esteira de boletagem Itau Vida)
+INTRAG_PASTA = r"Z:\Relações com Investidores - NOVO\Boletas Fundos\INTRAG"
+INTRAG_HEARTBEAT = os.path.join(INTRAG_PASTA, "agendador_heartbeat.txt")
+INTRAG_PROCESSADOS = os.path.join(INTRAG_PASTA, "processados_intrag.txt")
+INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_PASTA, "esteira_estado.json")
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
@@ -189,6 +195,187 @@ div[data-testid="column"] button {
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── INTRAG (esteira de boletagem) ────────────────────────────────────────────
+def _intrag_proc_hoje():
+    hoje_iso = datetime.now().date().isoformat()
+    if not os.path.exists(INTRAG_PROCESSADOS):
+        return None
+    try:
+        with open(INTRAG_PROCESSADOS, 'r', encoding='utf-8') as f:
+            for linha in reversed(list(f)):
+                p = linha.strip().split('|')
+                if len(p) >= 2 and p[0] == hoje_iso:
+                    return {'tipo': p[1], 'ts': p[2] if len(p) > 2 else ''}
+    except Exception:
+        pass
+    return None
+
+
+def _intrag_heartbeat():
+    if not os.path.exists(INTRAG_HEARTBEAT):
+        return None, None
+    try:
+        with open(INTRAG_HEARTBEAT, 'r', encoding='utf-8') as f:
+            partes = f.read().strip().split('|')
+        ts = datetime.strptime(partes[0], '%Y-%m-%dT%H:%M:%S')
+        estado = partes[1] if len(partes) > 1 else None
+        if ts.date() != datetime.now().date():
+            return None, None
+        return ts, estado
+    except Exception:
+        return None, None
+
+
+def _intrag_txts_hoje():
+    yyyymmdd = datetime.now().strftime('%Y%m%d')
+    nomes = [
+        f'Passivo_ItauVida_FIE_{yyyymmdd}.txt',
+        f'Ativo_FIE_FIFE_{yyyymmdd}.txt',
+        f'Passivo_FIE_FIFE_{yyyymmdd}.txt',
+    ]
+    return sum(1 for n in nomes if os.path.exists(os.path.join(INTRAG_PASTA, n)))
+
+
+def _intrag_estado_manual_hoje():
+    hoje_iso = datetime.now().date().isoformat()
+    if not os.path.exists(INTRAG_ESTADO_MANUAL):
+        return {}
+    try:
+        with open(INTRAG_ESTADO_MANUAL, 'r', encoding='utf-8') as f:
+            return json.load(f).get(hoje_iso, {})
+    except Exception:
+        return {}
+
+
+def _intrag_marcar(chave, valor):
+    hoje_iso = datetime.now().date().isoformat()
+    todo = {}
+    if os.path.exists(INTRAG_ESTADO_MANUAL):
+        try:
+            with open(INTRAG_ESTADO_MANUAL, 'r', encoding='utf-8') as f:
+                todo = json.load(f)
+        except Exception:
+            todo = {}
+    todo.setdefault(hoje_iso, {})
+    if valor:
+        todo[hoje_iso][chave] = {'feito': True, 'ts': datetime.now().strftime('%H:%M:%S')}
+    else:
+        todo[hoje_iso].pop(chave, None)
+    try:
+        os.makedirs(os.path.dirname(INTRAG_ESTADO_MANUAL), exist_ok=True)
+        with open(INTRAG_ESTADO_MANUAL, 'w', encoding='utf-8') as f:
+            json.dump(todo, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Falha ao salvar estado INTRAG: {e}")
+
+
+def _intrag_step_card(col, num, titulo, accent, icon, sub):
+    cores = {'ok': '#22c55e', 'pend': '#f59e0b', 'zero': '#ef4444', 'fut': '#94a3b8'}
+    cor = cores.get(accent, '#94a3b8')
+    with col:
+        st.markdown(f"""
+        <div style='background:white;border-radius:10px;padding:10px 6px;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.06);text-align:center;
+                    border-top:4px solid {cor};margin-bottom:6px;min-height:130px'>
+          <div style='font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:.05em'>STEP {num}</div>
+          <div style='font-size:12px;color:#1a2540;font-weight:600;margin-top:4px;height:32px'>{titulo}</div>
+          <div style='font-size:24px;margin:4px 0'>{icon}</div>
+          <div style='font-size:10.5px;color:#64748b;height:14px'>{sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def render_intrag_esteira():
+    """Renderiza a esteira INTRAG de 6 steps."""
+    proc = _intrag_proc_hoje()
+    hb_ts, hb_estado = _intrag_heartbeat()
+    n_txts = _intrag_txts_hoje()
+    manual = _intrag_estado_manual_hoje()
+
+    agora = datetime.now()
+    is_dia_util = agora.weekday() < 5
+
+    # Step 1 - Email Itau
+    if not is_dia_util:
+        s1 = ('fut', '🏖️', 'fim de semana')
+    elif proc and proc['tipo'] == 'sucesso':
+        hr = proc['ts'].split()[1][:5] if ' ' in proc['ts'] else ''
+        s1 = ('ok', '✅', f'recebido {hr}')
+    elif proc and proc['tipo'] == 'sem_movimento':
+        s1 = ('ok', '✅', 'sem movimento')
+    elif proc and proc['tipo'] == 'fim_dia':
+        s1 = ('zero', '❌', '17h sem email')
+    elif hb_ts and (agora - hb_ts).total_seconds() / 60 < 7:
+        s1 = ('pend', '⏳', f"vivo {hb_ts.strftime('%H:%M')}")
+    elif agora.hour < 13:
+        s1 = ('fut', '⏰', 'inicia 13h')
+    elif hb_ts:
+        delta_min = int((agora - hb_ts).total_seconds() / 60)
+        s1 = ('zero', '⚠️', f'parado {delta_min}min')
+    else:
+        s1 = ('zero', '⚠️', 'robô off')
+
+    # Step 2 - TXTs gerados
+    if not is_dia_util:
+        s2 = ('fut', '🏖️', '-')
+    elif proc and proc['tipo'] == 'sem_movimento':
+        s2 = ('ok', '🏖️', 'sem mov')
+    elif n_txts == 3:
+        s2 = ('ok', '✅', '3/3 TXTs')
+    elif n_txts > 0:
+        s2 = ('pend', '⏳', f'{n_txts}/3 TXTs')
+    else:
+        s2 = ('fut', '·', 'aguarda step 1')
+
+    # Steps 3-6: manuais
+    def _step_manual(chave):
+        info = manual.get(chave)
+        if info and info.get('feito'):
+            ts = info.get('ts', '')
+            return ('ok', '✅', f'feito {ts[:5]}', True)
+        # se ainda nao chegou ao step 2, mostra como futuro
+        if not (n_txts == 3 or (proc and proc['tipo'] == 'sem_movimento')):
+            return ('fut', '⏳', 'aguarda TXTs', False)
+        return ('pend', '⏳', 'pendente', False)
+
+    s3 = _step_manual('subiu_passivo_itau')
+    s4 = _step_manual('subiu_ativo_fife')
+    s5 = _step_manual('subiu_passivo_fife')
+    s6 = _step_manual('liquidado')
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    titulo_col, link_col = st.columns([6, 1])
+    with titulo_col:
+        st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
+    with link_col:
+        st.markdown(f"<div style='text-align:right;padding-top:14px'><a href='file:///{INTRAG_PASTA.replace(chr(92), '/')}' style='font-size:12px;color:#1C57A8'>📁 abrir pasta</a></div>", unsafe_allow_html=True)
+
+    cols = st.columns(6)
+    _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
+    _intrag_step_card(cols[1], '2', 'TXTs gerados', *s2)
+    _intrag_step_card(cols[2], '3', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
+    _intrag_step_card(cols[3], '4', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
+    _intrag_step_card(cols[4], '5', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
+    _intrag_step_card(cols[5], '6', 'Liquidação', s6[0], s6[1], s6[2])
+
+    if is_dia_util:
+        # Checkboxes manuais (steps 3-6)
+        ck_cols = st.columns(6)
+        ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+        ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+        for col, chave, marcado in [
+            (ck_cols[2], 'subiu_passivo_itau', s3[3]),
+            (ck_cols[3], 'subiu_ativo_fife', s4[3]),
+            (ck_cols[4], 'subiu_passivo_fife', s5[3]),
+            (ck_cols[5], 'liquidado', s6[3]),
+        ]:
+            with col:
+                novo = st.checkbox('feito', value=marcado, key=f'intrag_{chave}', label_visibility='collapsed')
+                if novo != marcado:
+                    _intrag_marcar(chave, novo)
+                    st.rerun()
 
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
@@ -585,6 +772,10 @@ for i, d in enumerate(dias):
           </div>
         </div>
         """, unsafe_allow_html=True)
+
+
+# ── ESTEIRA INTRAG ────────────────────────────────────────────────────────────
+render_intrag_esteira()
 
 
 # ── FILTROS ───────────────────────────────────────────────────────────────────
