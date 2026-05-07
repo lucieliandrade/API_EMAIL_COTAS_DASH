@@ -392,20 +392,18 @@ def render_intrag_esteira():
             except Exception as e:
                 st.warning(f"Falha ao abrir: {e}")
 
-        # Botao 2: copia caminho pro clipboard (funciona pra qualquer usuario)
-        caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
+        # Botao 2: input texto com caminho (selecao + Ctrl+C funcionam sempre).
+        # Evita problema de encoding/escape do JS clipboard.
         st.markdown(f"""
-        <button onclick="
-        navigator.clipboard.writeText('{caminho_js}').then(()=>{{
-          this.innerHTML='✅ caminho copiado! cole no Win+R';
-          setTimeout(()=>{{this.innerHTML='📋 copiar caminho rede';}},3000);
-        }});
-        " style="
-        background:#e8edf5;color:#1C57A8;border:1px solid #c7d2e6;padding:7px 12px;
-        border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
-        width:100%;margin-top:6px;font-family:Inter,sans-serif;">
-        📋 copiar caminho rede
-        </button>
+        <input type="text" value="{INTRAG_PASTA_NET}" readonly
+          onclick="this.select();document.execCommand('copy');
+                   this.style.background='#dcfce7';
+                   setTimeout(()=>this.style.background='#f8fafc',1500);"
+          style="width:100%;margin-top:6px;padding:8px 10px;
+                 border:1px solid #c7d2e6;border-radius:8px;
+                 background:#f8fafc;color:#1C57A8;font-size:11px;
+                 font-family:Consolas,monospace;cursor:pointer;"
+          title="Clique para copiar (ou selecione e Ctrl+C)" />
         """, unsafe_allow_html=True)
 
     cols = st.columns(7)
