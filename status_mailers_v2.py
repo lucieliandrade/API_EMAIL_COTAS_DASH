@@ -383,12 +383,21 @@ def render_intrag_esteira():
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
-        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
-            try:
-                os.startfile(INTRAG_PASTA_NET)
-            except Exception as e:
-                st.warning(f"Falha ao abrir: {e}")
+        # Link file:// renderizado em cada browser do usuario.
+        # Se browser do usuario permitir (Edge corporativo geralmente permite
+        # na intranet), abre Explorer na maquina dele.
+        caminho_url = INTRAG_PASTA_NET.replace('\\', '/')
+        st.markdown(f"""
+        <div style='padding-top:10px'>
+        <a href="file:///{caminho_url}" target="_blank" style="
+          display:block;background:#1C57A8;color:white;border:none;
+          padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;
+          text-align:center;text-decoration:none;font-family:Inter,sans-serif;
+          width:100%;box-sizing:border-box;">
+          📁 abrir pasta
+        </a>
+        </div>
+        """, unsafe_allow_html=True)
 
     cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
