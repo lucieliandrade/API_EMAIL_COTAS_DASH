@@ -379,23 +379,16 @@ def render_intrag_esteira():
         s7 = ('fut', '·', 'aguarda step 6')
 
     st.markdown("<br>", unsafe_allow_html=True)
-    titulo_col, btn_intrag_col, btn_net_col = st.columns([5, 1, 1])
+    titulo_col, btn_intrag_col = st.columns([6, 1])
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
         st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
-        if st.button("📁 INTRAG", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA):
+        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA):
             try:
                 os.startfile(INTRAG_PASTA)
             except Exception as e:
-                st.warning(f"Falha ao abrir INTRAG: {e}")
-    with btn_net_col:
-        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
-        if st.button("📁 Pasta net", key="intrag_abrir_pasta_net", use_container_width=True, help=INTRAG_PASTA_NET):
-            try:
-                os.startfile(INTRAG_PASTA_NET)
-            except Exception as e:
-                st.warning(f"Falha ao abrir pasta net: {e}")
+                st.warning(f"Falha ao abrir: {e}")
 
     cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
