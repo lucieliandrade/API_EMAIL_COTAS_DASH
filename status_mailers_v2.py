@@ -383,23 +383,29 @@ def render_intrag_esteira():
     with titulo_col:
         st.markdown("### 🏦 Esteira INTRAG · Boletas Itaú Vida")
     with btn_intrag_col:
-        # Browser bloqueia file:// em pagina HTTP. Solucao: botao que copia
-        # o caminho pro clipboard via JS. Usuario cola no Win+R.
+        st.markdown("<div style='padding-top:10px'></div>", unsafe_allow_html=True)
+
+        # Botao 1: abre pasta (so funciona na maquina servidor = Lucieli)
+        if st.button("📁 abrir pasta", key="intrag_abrir_pasta", use_container_width=True, help=INTRAG_PASTA_NET):
+            try:
+                os.startfile(INTRAG_PASTA_NET)
+            except Exception as e:
+                st.warning(f"Falha ao abrir: {e}")
+
+        # Botao 2: copia caminho pro clipboard (funciona pra qualquer usuario)
         caminho_js = INTRAG_PASTA_NET.replace('\\', '\\\\').replace("'", "\\'")
         st.markdown(f"""
-        <div style='padding-top:10px'>
         <button onclick="
         navigator.clipboard.writeText('{caminho_js}').then(()=>{{
           this.innerHTML='✅ caminho copiado! cole no Win+R';
-          setTimeout(()=>{{this.innerHTML='📋 copiar caminho da pasta';}},3000);
+          setTimeout(()=>{{this.innerHTML='📋 copiar caminho rede';}},3000);
         }});
         " style="
-        background:#1C57A8;color:white;border:none;padding:9px 14px;
-        border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
-        width:100%;font-family:Inter,sans-serif;">
-        📋 copiar caminho da pasta
+        background:#e8edf5;color:#1C57A8;border:1px solid #c7d2e6;padding:7px 12px;
+        border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;
+        width:100%;margin-top:6px;font-family:Inter,sans-serif;">
+        📋 copiar caminho rede
         </button>
-        </div>
         """, unsafe_allow_html=True)
 
     cols = st.columns(7)
