@@ -392,19 +392,9 @@ def render_intrag_esteira():
             except Exception as e:
                 st.warning(f"Falha ao abrir: {e}")
 
-        # Botao 2: input texto com caminho (selecao + Ctrl+C funcionam sempre).
-        # Evita problema de encoding/escape do JS clipboard.
-        st.markdown(f"""
-        <input type="text" value="{INTRAG_PASTA_NET}" readonly
-          onclick="this.select();document.execCommand('copy');
-                   this.style.background='#dcfce7';
-                   setTimeout(()=>this.style.background='#f8fafc',1500);"
-          style="width:100%;margin-top:6px;padding:8px 10px;
-                 border:1px solid #c7d2e6;border-radius:8px;
-                 background:#f8fafc;color:#1C57A8;font-size:11px;
-                 font-family:Consolas,monospace;cursor:pointer;"
-          title="Clique para copiar (ou selecione e Ctrl+C)" />
-        """, unsafe_allow_html=True)
+        # Caminho como st.code: widget nativo do Streamlit com botao de
+        # copy embutido. Garante texto puro sem aspas/escapes.
+        st.code(INTRAG_PASTA_NET, language=None)
 
     cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
