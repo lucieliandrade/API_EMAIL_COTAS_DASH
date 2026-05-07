@@ -17,6 +17,7 @@ INTRAG_PASTA = r"Z:\Relações com Investidores - NOVO\Boletas Fundos\INTRAG"
 INTRAG_HEARTBEAT = os.path.join(INTRAG_PASTA, "agendador_heartbeat.txt")
 INTRAG_PROCESSADOS = os.path.join(INTRAG_PASTA, "processados_intrag.txt")
 INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_PASTA, "esteira_estado.json")
+INTRAG_PASTA_NET = r"N:\Middle\Resgates\Codigos_movimentacoes_adm\Código Itaú"
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
@@ -238,6 +239,26 @@ def _intrag_txts_hoje():
     return sum(1 for n in nomes if os.path.exists(os.path.join(INTRAG_PASTA, n)))
 
 
+def _intrag_arquivo_net():
+    """Retorna (existe, mtime) de qualquer arquivo do dia na pasta net."""
+    yyyymmdd = datetime.now().strftime('%Y%m%d')
+    if not os.path.isdir(INTRAG_PASTA_NET):
+        return False, None
+    try:
+        for nome in os.listdir(INTRAG_PASTA_NET):
+            if nome.startswith(yyyymmdd):
+                caminho = os.path.join(INTRAG_PASTA_NET, nome)
+                if os.path.isfile(caminho):
+                    try:
+                        mtime = datetime.fromtimestamp(os.path.getmtime(caminho))
+                    except Exception:
+                        mtime = None
+                    return True, mtime
+    except Exception:
+        pass
+    return False, None
+
+
 def _intrag_estado_manual_hoje():
     hoje_iso = datetime.now().date().isoformat()
     if not os.path.exists(INTRAG_ESTADO_MANUAL):
@@ -288,11 +309,12 @@ def _intrag_step_card(col, num, titulo, accent, icon, sub):
 
 
 def render_intrag_esteira():
-    """Renderiza a esteira INTRAG de 6 steps."""
+    """Renderiza a esteira INTRAG de 7 steps."""
     proc = _intrag_proc_hoje()
     hb_ts, hb_estado = _intrag_heartbeat()
     n_txts = _intrag_txts_hoje()
     manual = _intrag_estado_manual_hoje()
+    arq_net_existe, arq_net_mtime = _intrag_arquivo_net()
 
     agora = datetime.now()
     is_dia_util = agora.weekday() < 5
@@ -345,6 +367,17 @@ def render_intrag_esteira():
     s5 = _step_manual('subiu_passivo_fife')
     s6 = _step_manual('liquidado')
 
+    # Step 7 - Arquivo na pasta net (auto)
+    if not is_dia_util:
+        s7 = ('fut', '🏖️', '-')
+    elif arq_net_existe:
+        hr = arq_net_mtime.strftime('%H:%M') if arq_net_mtime else ''
+        s7 = ('ok', '✅', f'criado {hr}' if hr else 'OK')
+    elif s6[3]:  # liquidacao marcada mas arquivo ainda nao apareceu
+        s7 = ('pend', '⏳', 'aguardando')
+    else:
+        s7 = ('fut', '·', 'aguarda step 6')
+
     st.markdown("<br>", unsafe_allow_html=True)
     titulo_col, link_col = st.columns([6, 1])
     with titulo_col:
@@ -352,17 +385,18 @@ def render_intrag_esteira():
     with link_col:
         st.markdown(f"<div style='text-align:right;padding-top:14px'><a href='file:///{INTRAG_PASTA.replace(chr(92), '/')}' style='font-size:12px;color:#1C57A8'>📁 abrir pasta</a></div>", unsafe_allow_html=True)
 
-    cols = st.columns(6)
+    cols = st.columns(7)
     _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
     _intrag_step_card(cols[1], '2', 'TXTs gerados', *s2)
     _intrag_step_card(cols[2], '3', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
     _intrag_step_card(cols[3], '4', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
     _intrag_step_card(cols[4], '5', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
     _intrag_step_card(cols[5], '6', 'Liquidação', s6[0], s6[1], s6[2])
+    _intrag_step_card(cols[6], '7', 'Arquivo pasta net', *s7)
 
     if is_dia_util:
-        # Checkboxes manuais (steps 3-6)
-        ck_cols = st.columns(6)
+        # Checkboxes manuais (steps 3-6, step 7 e auto)
+        ck_cols = st.columns(7)
         ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
         ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
         for col, chave, marcado in [
@@ -376,6 +410,7 @@ def render_intrag_esteira():
                 if novo != marcado:
                     _intrag_marcar(chave, novo)
                     st.rerun()
+        ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
 
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
