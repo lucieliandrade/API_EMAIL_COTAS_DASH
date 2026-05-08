@@ -596,134 +596,139 @@ def _envio_abrir_outlook(cliente, cliente_cfg, anexos, data_exibicao):
         return False, str(e)
 
 
-def _envio_card(col, cliente, status, sub, accent):
-    cores = {'ok': '#22c55e', 'pend': '#f59e0b', 'zero': '#ef4444', 'enviado': '#1C57A8'}
-    cor = cores.get(accent, '#94a3b8')
-    icones = {'ok': '✅', 'pend': '⏳', 'zero': '❌', 'enviado': '📧'}
-    icon = icones.get(accent, '·')
-    with col:
-        st.markdown(f"""
-        <div style='background:white;border-radius:10px;padding:12px 8px;
-                    box-shadow:0 2px 6px rgba(0,0,0,0.06);text-align:center;
-                    border-top:4px solid {cor};margin-bottom:6px;min-height:120px'>
-          <div style='font-size:13px;color:#1a2540;font-weight:700;margin-bottom:4px'>{cliente}</div>
-          <div style='font-size:24px;margin:2px 0'>{icon}</div>
-          <div style='font-size:11px;color:#1a2540;font-weight:600'>{status}</div>
-          <div style='font-size:10px;color:#64748b;margin-top:2px'>{sub}</div>
-        </div>
-        """, unsafe_allow_html=True)
+_ENVIO_PALETA = {
+    'ok':      {'cor': '#22c55e', 'bg': '#dcfce7', 'fg': '#166534', 'icon': '✅', 'pill': 'PRONTO'},
+    'pend':    {'cor': '#f59e0b', 'bg': '#fef3c7', 'fg': '#92400e', 'icon': '⏳', 'pill': 'AGUARDANDO'},
+    'zero':    {'cor': '#ef4444', 'bg': '#fee2e2', 'fg': '#991b1b', 'icon': '⚠️', 'pill': 'ERRO'},
+    'enviado': {'cor': '#1C57A8', 'bg': '#dbeafe', 'fg': '#1e40af', 'icon': '📧', 'pill': 'ENVIADO'},
+}
 
 
 def render_envio_diario():
-    """Seção 'Envio Diário · XMLs Mellon' — ICATU / Aquila / BASF."""
-    # Date picker
-    data_default = st.session_state.get('envio_data') or _envio_data_default()
+    """Seção 'Envio Diário · XMLs Mellon' — ICATU / Aquila / BASF (versão compacta)."""
     if 'envio_data' not in st.session_state:
-        st.session_state.envio_data = data_default
-
+        st.session_state.envio_data = _envio_data_default()
     data_sel = st.session_state.envio_data
     data_yyyymmdd = data_sel.strftime('%Y%m%d')
     data_exibicao = data_sel.strftime('%d/%m/%Y')
 
-    # Levantar status de todos os clientes p/ resumo no expander
     log = _envio_log_ler().get(data_yyyymmdd, {})
     status_clientes = {}
     for nome, cfg in ENVIO_DIARIO_CLIENTES.items():
         info = _envio_buscar_arquivos(cfg, data_yyyymmdd)
         falt = info['xmls_falt'] + info['extras_falt']
+        n_total = len(cfg['codigos']) + len(cfg.get('extras', []))
+        n_ok = len(info['xmls_ok']) + len(info['extras_ok'])
         if nome in log:
-            status_clientes[nome] = ('enviado', f'enviado {log[nome][-8:-3]}', info)
+            hr = log[nome][-8:-3]
+            status_clientes[nome] = ('enviado', f'às {hr}', info, n_ok, n_total)
         elif info.get('pasta_off'):
-            status_clientes[nome] = ('zero', 'pasta X: offline', info)
+            status_clientes[nome] = ('zero', 'pasta X: offline', info, 0, n_total)
         elif not falt:
-            status_clientes[nome] = ('ok', 'pronto p/ enviar', info)
+            status_clientes[nome] = ('ok', f'{n_ok}/{n_total} arquivos', info, n_ok, n_total)
         else:
-            status_clientes[nome] = ('pend', f'aguardando {len(falt)}', info)
+            status_clientes[nome] = ('pend', f'{n_ok}/{n_total} arquivos', info, n_ok, n_total)
 
-    n_ok = sum(1 for s in status_clientes.values() if s[0] in ('enviado',))
-    n_pronto = sum(1 for s in status_clientes.values() if s[0] == 'ok')
-    n_total = len(status_clientes)
-    if n_ok == n_total:
-        resumo = f"✅ {n_ok}/{n_total} enviados"
-    elif n_pronto > 0:
-        resumo = f"📧 {n_pronto} pronto(s) · {n_total - n_ok - n_pronto} aguardando"
+    n_enviados = sum(1 for s in status_clientes.values() if s[0] == 'enviado')
+    n_prontos  = sum(1 for s in status_clientes.values() if s[0] == 'ok')
+    n_total_c  = len(status_clientes)
+    if n_enviados == n_total_c:
+        resumo = f"✅ {n_enviados}/{n_total_c} enviados"
+    elif n_prontos:
+        resumo = f"📧 {n_prontos} pronto · {n_total_c - n_enviados - n_prontos} aguardando"
     else:
-        resumo = f"⏳ aguardando arquivos ({n_total - n_ok} cliente(s))"
+        resumo = f"⏳ aguardando ({n_total_c - n_enviados})"
 
-    label = f"📤 Envio Diário · XMLs Mellon   —   {data_exibicao}   —   {resumo}"
+    label = f"📤 Envio Diário · XMLs Mellon   ·   {data_exibicao}   ·   {resumo}"
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander(label, expanded=False):
-        # Linha de controles: data + atualizar
-        c1, c2, c3 = st.columns([2, 2, 4])
+        # Topo: date picker pequeno
+        c1, c2 = st.columns([1, 5])
         with c1:
-            nova_data = st.date_input("Data ref.", value=data_sel, key="envio_date_input", format="DD/MM/YYYY")
-            if nova_data != data_sel:
-                st.session_state.envio_data = nova_data
+            nova = st.date_input("Data ref.", value=data_sel, key="envio_date_input",
+                                 format="DD/MM/YYYY", label_visibility="collapsed")
+            if nova != data_sel:
+                st.session_state.envio_data = nova
                 st.rerun()
         with c2:
-            if st.button("🔄 Atualizar", key="envio_refresh", use_container_width=True):
-                st.rerun()
-        with c3:
-            st.markdown(f"<div style='padding-top:30px;font-size:12px;color:#64748b'>Pasta XML: <code>{ENVIO_DIARIO_PASTA_XML}</code></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='padding-top:8px;font-size:11px;color:#94a3b8'>"
+                f"Detecta automaticamente quando os XMLs chegam em "
+                f"<code style='font-size:10px'>{ENVIO_DIARIO_PASTA_XML}</code></div>",
+                unsafe_allow_html=True)
 
-        # Cards de status por cliente
-        cols = st.columns(len(ENVIO_DIARIO_CLIENTES))
-        for col, (nome, (accent, sub, _info)) in zip(cols, status_clientes.items()):
-            mapa_status = {'ok': 'pronto', 'pend': 'aguardando', 'zero': 'erro', 'enviado': 'enviado'}
-            _envio_card(col, nome, mapa_status[accent].upper(), sub, accent)
+        st.markdown("<div style='margin:6px 0'></div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='margin:8px 0;border:none;border-top:1px solid #e8edf5'>", unsafe_allow_html=True)
-
-        # Detalhes + ações por cliente
+        # Linha por cliente
         for nome, cfg in ENVIO_DIARIO_CLIENTES.items():
-            accent, sub, info = status_clientes[nome]
+            accent, sub, info, n_ok, n_total = status_clientes[nome]
+            pal = _ENVIO_PALETA[accent]
+            pct = int(100 * n_ok / n_total) if n_total else 0
             ja_enviado = (accent == 'enviado')
 
-            with st.container():
-                hcol, bcol = st.columns([4, 1])
-                with hcol:
-                    st.markdown(f"**{nome}**  ·  <span style='font-size:11px;color:#64748b'>{cfg['assunto'].format(data=data_exibicao)}</span>", unsafe_allow_html=True)
-                with bcol:
-                    if ja_enviado:
-                        if st.button("↩ desfazer envio", key=f"envio_undo_{nome}", use_container_width=True):
-                            _envio_log_desmarcar(data_yyyymmdd, nome)
-                            st.rerun()
+            cnome, cstatus, cprog, cacao = st.columns([2, 2, 3, 3])
 
-                # Arquivos encontrados / faltando
-                fcol1, fcol2 = st.columns(2)
-                with fcol1:
-                    if info['xmls_ok'] or info['extras_ok']:
-                        st.markdown("<div style='font-size:11px;color:#22c55e;font-weight:700'>ENCONTRADOS</div>", unsafe_allow_html=True)
-                        for caminho in info['xmls_ok'] + info['extras_ok']:
-                            st.markdown(f"<div style='font-size:11px;color:#1a2540'>✅ {os.path.basename(caminho)}</div>", unsafe_allow_html=True)
-                with fcol2:
-                    falt_xml = info['xmls_falt']
-                    falt_ex = info['extras_falt']
-                    if falt_xml or falt_ex:
-                        st.markdown("<div style='font-size:11px;color:#f59e0b;font-weight:700'>FALTANDO</div>", unsafe_allow_html=True)
-                        for cod in falt_xml:
-                            st.markdown(f"<div style='font-size:11px;color:#9a3412'>⏳ {cod}_{data_yyyymmdd}*.xml</div>", unsafe_allow_html=True)
-                        for nome_arq in falt_ex:
-                            st.markdown(f"<div style='font-size:11px;color:#9a3412'>⏳ {nome_arq}</div>", unsafe_allow_html=True)
+            with cnome:
+                st.markdown(
+                    f"<div style='padding-top:8px;font-size:13px;font-weight:700;color:#1a2540'>"
+                    f"{pal['icon']} {nome}</div>",
+                    unsafe_allow_html=True)
 
-                # Botão ação
-                if not ja_enviado and accent == 'ok':
-                    btncol, mkcol, _ = st.columns([2, 2, 4])
-                    with btncol:
-                        if st.button(f"📧 Abrir rascunho", key=f"envio_draft_{nome}", use_container_width=True, type="primary"):
+            with cstatus:
+                st.markdown(
+                    f"<div style='padding-top:6px'>"
+                    f"<span style='background:{pal['bg']};color:{pal['fg']};"
+                    f"padding:4px 12px;border-radius:14px;font-size:10.5px;font-weight:700;"
+                    f"letter-spacing:.04em'>{pal['pill']}</span>"
+                    f"<span style='font-size:11px;color:#64748b;margin-left:8px'>{sub}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+
+            with cprog:
+                st.markdown(
+                    f"<div style='padding-top:14px'>"
+                    f"<div style='background:#e8edf5;height:5px;border-radius:3px;overflow:hidden'>"
+                    f"<div style='width:{pct}%;height:5px;background:{pal['cor']};"
+                    f"border-radius:3px;transition:width .3s'></div></div></div>",
+                    unsafe_allow_html=True)
+
+            with cacao:
+                if ja_enviado:
+                    if st.button("↩ desfazer", key=f"envio_undo_{nome}", use_container_width=True):
+                        _envio_log_desmarcar(data_yyyymmdd, nome)
+                        st.rerun()
+                elif accent == 'ok':
+                    bc1, bc2 = st.columns(2)
+                    with bc1:
+                        if st.button("📧 Rascunho", key=f"envio_draft_{nome}",
+                                     use_container_width=True, type="primary"):
                             anexos = info['xmls_ok'] + info['extras_ok']
                             ok, err = _envio_abrir_outlook(nome, cfg, anexos, data_exibicao)
                             if ok:
-                                st.success(f"Rascunho aberto no Outlook — confira e clique em ENVIAR.")
+                                st.toast(f"Rascunho {nome} aberto no Outlook", icon="✉️")
                             else:
-                                st.error(f"Erro ao abrir Outlook: {err}")
-                    with mkcol:
-                        if st.button(f"✅ Marcar como enviado", key=f"envio_mark_{nome}", use_container_width=True):
+                                st.error(f"Erro Outlook: {err}")
+                    with bc2:
+                        if st.button("✓ enviado", key=f"envio_mark_{nome}",
+                                     use_container_width=True):
                             _envio_log_marcar(data_yyyymmdd, nome)
                             st.rerun()
+                else:
+                    # mostra chips dos faltantes (apenas códigos curtos)
+                    falt = info['xmls_falt'] + [os.path.basename(x).replace(f'_{data_yyyymmdd}.xlsx', '') for x in info['extras_falt']]
+                    chips = ''.join(
+                        f"<span style='display:inline-block;background:#fef3c7;color:#92400e;"
+                        f"padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;"
+                        f"margin:1px 2px'>{c}</span>"
+                        for c in falt[:3])
+                    if len(falt) > 3:
+                        chips += f"<span style='font-size:10px;color:#94a3b8'> +{len(falt)-3}</span>"
+                    st.markdown(f"<div style='padding-top:10px'>{chips}</div>", unsafe_allow_html=True)
 
-                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<hr style='margin:6px 0;border:none;border-top:1px solid #f1f5f9'>",
+                unsafe_allow_html=True)
 
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
