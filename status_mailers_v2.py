@@ -20,6 +20,42 @@ INTRAG_HEARTBEAT = os.path.join(INTRAG_ROBO_DIR, "agendador_heartbeat.txt")
 INTRAG_PROCESSADOS = os.path.join(INTRAG_ROBO_DIR, "processados_intrag.txt")
 INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_ROBO_DIR, "esteira_estado.json")
 INTRAG_PASTA_NET = r"N:\Middle\Resgates\Codigos_movimentacoes_adm\Código Itaú"
+
+# Envio Diário (XMLs Mellon para ICATU / Aquila / BASF)
+ENVIO_DIARIO_PASTA_XML = r"X:\RI + BACK - PILOTO XML\Mellon_API_Diariamente(RI)"
+ENVIO_DIARIO_PASTA_CARTEIRAS = r"X:\#CapitaniaRFE\Operational\BatimentoCotas\Carteiras_BNYM"
+ENVIO_DIARIO_DIR = r"Z:\Relações com Investidores - NOVO\codigos\Envio_Diário"
+ENVIO_DIARIO_LOG = os.path.join(ENVIO_DIARIO_DIR, "enviados.json")
+
+ENVIO_DIARIO_INVEST = "invest@capitaniainvestimentos.com.br"
+ENVIO_DIARIO_CLIENTES = {
+    "ICATU": {
+        "codigos": ["FD26498249000162", "FD27239065000140", "FD30338838000150"],
+        "assunto": "ICATU | XML - {data}",
+        "to":  ENVIO_DIARIO_INVEST,
+        "cc":  ENVIO_DIARIO_INVEST,
+        "bcc": "ControledeInvestimentos@icatuseguros.com.br",
+    },
+    "Aquila 6 e 7": {
+        "codigos": ["FD17898668000109", "FD42870959000128"],
+        "assunto": "Aquila 6 e 7 | CARTEIRA - {data}",
+        "to":  ENVIO_DIARIO_INVEST,
+        "cc":  ENVIO_DIARIO_INVEST,
+        "bcc": "Claudia.vieira@linde.com;Isadora.monteiro@linde.com;Wilson.bispo@linde.com",
+        "extras": [
+            os.path.join(ENVIO_DIARIO_PASTA_CARTEIRAS, "CAPIT AQUILA 6_{data}.xlsx"),
+            os.path.join(ENVIO_DIARIO_PASTA_CARTEIRAS, "BNY11585_{data}.xlsx"),
+        ],
+    },
+    "BASF": {
+        "codigos": ["FD18447898000106", "FD21732670000172"],
+        "assunto": "BASF | XML - {data}",
+        "to":  ENVIO_DIARIO_INVEST,
+        "cc":  ENVIO_DIARIO_INVEST,
+        "bcc": "gabriel.a.silva@basf.com",
+    },
+}
+
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
 COR_PRIM  = "#1C57A8"
@@ -432,6 +468,262 @@ def render_intrag_esteira():
                         _intrag_marcar(chave, novo)
                         st.rerun()
             ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+
+
+# ── ENVIO DIÁRIO (XMLs Mellon: ICATU / Aquila / BASF) ────────────────────────
+def _envio_data_default():
+    """D-1 útil (pula fim de semana e feriado). Default ao abrir o dash."""
+    br_holidays = holidays.country_holidays('BR')
+    d = datetime.now().date() - timedelta(days=1)
+    while d.weekday() >= 5 or d in br_holidays:
+        d -= timedelta(days=1)
+    return d
+
+
+def _envio_buscar_arquivos(cliente_cfg, data_yyyymmdd):
+    """Para um cliente, retorna {
+        'xmls_ok':[caminho], 'xmls_falt':[codigo],
+        'extras_ok':[caminho], 'extras_falt':[nome],
+    }"""
+    xmls_ok, xmls_falt = [], []
+    extras_ok, extras_falt = [], []
+
+    if not os.path.isdir(ENVIO_DIARIO_PASTA_XML):
+        return {'xmls_ok': [], 'xmls_falt': cliente_cfg['codigos'], 'extras_ok': [], 'extras_falt': [], 'pasta_off': True}
+
+    arquivos_pasta = os.listdir(ENVIO_DIARIO_PASTA_XML)
+    for cod in cliente_cfg['codigos']:
+        padrao = f"{cod}_{data_yyyymmdd}"
+        achou = next((a for a in arquivos_pasta if a.startswith(padrao)), None)
+        if achou:
+            xmls_ok.append(os.path.join(ENVIO_DIARIO_PASTA_XML, achou))
+        else:
+            xmls_falt.append(cod)
+
+    for tpl in cliente_cfg.get('extras', []):
+        caminho = tpl.format(data=data_yyyymmdd)
+        if os.path.exists(caminho):
+            extras_ok.append(caminho)
+        else:
+            extras_falt.append(os.path.basename(caminho))
+
+    return {'xmls_ok': xmls_ok, 'xmls_falt': xmls_falt,
+            'extras_ok': extras_ok, 'extras_falt': extras_falt, 'pasta_off': False}
+
+
+def _envio_log_ler():
+    if not os.path.exists(ENVIO_DIARIO_LOG):
+        return {}
+    try:
+        with open(ENVIO_DIARIO_LOG, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _envio_log_marcar(data_yyyymmdd, cliente):
+    todo = _envio_log_ler()
+    todo.setdefault(data_yyyymmdd, {})
+    todo[data_yyyymmdd][cliente] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        os.makedirs(ENVIO_DIARIO_DIR, exist_ok=True)
+        with open(ENVIO_DIARIO_LOG, 'w', encoding='utf-8') as f:
+            json.dump(todo, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        st.warning(f"Falha ao salvar log de envio: {e}")
+
+
+def _envio_log_desmarcar(data_yyyymmdd, cliente):
+    todo = _envio_log_ler()
+    if data_yyyymmdd in todo and cliente in todo[data_yyyymmdd]:
+        todo[data_yyyymmdd].pop(cliente)
+        if not todo[data_yyyymmdd]:
+            todo.pop(data_yyyymmdd)
+        try:
+            with open(ENVIO_DIARIO_LOG, 'w', encoding='utf-8') as f:
+                json.dump(todo, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            st.warning(f"Falha ao atualizar log: {e}")
+
+
+def _envio_saudacao():
+    h = datetime.now().hour
+    if h < 12:  return "bom dia,"
+    if h < 18:  return "boa tarde,"
+    return "boa noite,"
+
+
+def _envio_corpo_html():
+    saud = _envio_saudacao()
+    return f"""<html><body style="font-family: Verdana; font-size: 10pt; color: black;">
+<p>Prezados, {saud}</p>
+<p>Seguem os arquivos.</p>
+<p>Atenciosamente,</p>
+<p style="color: #1B51A3;">
+Relações com Investidores<br>
+Capitânia Investimentos<br>
+Tel: 55-11-2853-8888<br>
+<a href="mailto:invest@capitaniainvestimentos.com.br" style="color:#1B51A3;text-decoration:none;">invest@capitaniainvestimentos.com.br</a><br>
+<a href="https://www.capitaniainvestimentos.com.br" style="color:#1B51A3;text-decoration:none;">www.capitaniainvestimentos.com.br</a>
+</p>
+<p style="font-size:9pt;color:#1B51A3;">
+Informação confidencial para uso exclusivo pelo destinatário da mensagem. Confidential information for exclusive use by recipient.
+</p></body></html>"""
+
+
+def _envio_abrir_outlook(cliente, cliente_cfg, anexos, data_exibicao):
+    """Abre rascunho no Outlook (Display, NUNCA Send)."""
+    try:
+        import pythoncom
+        import win32com.client as win32
+        pythoncom.CoInitialize()
+        outlook = win32.Dispatch('Outlook.Application')
+        email = outlook.CreateItem(0)
+        email.To = cliente_cfg['to']
+        email.CC = cliente_cfg['cc']
+        if cliente_cfg.get('bcc'):
+            email.BCC = cliente_cfg['bcc']
+        email.Subject = cliente_cfg['assunto'].format(data=data_exibicao)
+        email.HTMLBody = _envio_corpo_html()
+        for caminho in anexos:
+            try:
+                email.Attachments.Add(os.path.abspath(caminho))
+            except Exception as e:
+                st.warning(f"Falha ao anexar {os.path.basename(caminho)}: {e}")
+        email.Display()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def _envio_card(col, cliente, status, sub, accent):
+    cores = {'ok': '#22c55e', 'pend': '#f59e0b', 'zero': '#ef4444', 'enviado': '#1C57A8'}
+    cor = cores.get(accent, '#94a3b8')
+    icones = {'ok': '✅', 'pend': '⏳', 'zero': '❌', 'enviado': '📧'}
+    icon = icones.get(accent, '·')
+    with col:
+        st.markdown(f"""
+        <div style='background:white;border-radius:10px;padding:12px 8px;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.06);text-align:center;
+                    border-top:4px solid {cor};margin-bottom:6px;min-height:120px'>
+          <div style='font-size:13px;color:#1a2540;font-weight:700;margin-bottom:4px'>{cliente}</div>
+          <div style='font-size:24px;margin:2px 0'>{icon}</div>
+          <div style='font-size:11px;color:#1a2540;font-weight:600'>{status}</div>
+          <div style='font-size:10px;color:#64748b;margin-top:2px'>{sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def render_envio_diario():
+    """Seção 'Envio Diário · XMLs Mellon' — ICATU / Aquila / BASF."""
+    # Date picker
+    data_default = st.session_state.get('envio_data') or _envio_data_default()
+    if 'envio_data' not in st.session_state:
+        st.session_state.envio_data = data_default
+
+    data_sel = st.session_state.envio_data
+    data_yyyymmdd = data_sel.strftime('%Y%m%d')
+    data_exibicao = data_sel.strftime('%d/%m/%Y')
+
+    # Levantar status de todos os clientes p/ resumo no expander
+    log = _envio_log_ler().get(data_yyyymmdd, {})
+    status_clientes = {}
+    for nome, cfg in ENVIO_DIARIO_CLIENTES.items():
+        info = _envio_buscar_arquivos(cfg, data_yyyymmdd)
+        falt = info['xmls_falt'] + info['extras_falt']
+        if nome in log:
+            status_clientes[nome] = ('enviado', f'enviado {log[nome][-8:-3]}', info)
+        elif info.get('pasta_off'):
+            status_clientes[nome] = ('zero', 'pasta X: offline', info)
+        elif not falt:
+            status_clientes[nome] = ('ok', 'pronto p/ enviar', info)
+        else:
+            status_clientes[nome] = ('pend', f'aguardando {len(falt)}', info)
+
+    n_ok = sum(1 for s in status_clientes.values() if s[0] in ('enviado',))
+    n_pronto = sum(1 for s in status_clientes.values() if s[0] == 'ok')
+    n_total = len(status_clientes)
+    if n_ok == n_total:
+        resumo = f"✅ {n_ok}/{n_total} enviados"
+    elif n_pronto > 0:
+        resumo = f"📧 {n_pronto} pronto(s) · {n_total - n_ok - n_pronto} aguardando"
+    else:
+        resumo = f"⏳ aguardando arquivos ({n_total - n_ok} cliente(s))"
+
+    label = f"📤 Envio Diário · XMLs Mellon   —   {data_exibicao}   —   {resumo}"
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander(label, expanded=False):
+        # Linha de controles: data + atualizar
+        c1, c2, c3 = st.columns([2, 2, 4])
+        with c1:
+            nova_data = st.date_input("Data ref.", value=data_sel, key="envio_date_input", format="DD/MM/YYYY")
+            if nova_data != data_sel:
+                st.session_state.envio_data = nova_data
+                st.rerun()
+        with c2:
+            if st.button("🔄 Atualizar", key="envio_refresh", use_container_width=True):
+                st.rerun()
+        with c3:
+            st.markdown(f"<div style='padding-top:30px;font-size:12px;color:#64748b'>Pasta XML: <code>{ENVIO_DIARIO_PASTA_XML}</code></div>", unsafe_allow_html=True)
+
+        # Cards de status por cliente
+        cols = st.columns(len(ENVIO_DIARIO_CLIENTES))
+        for col, (nome, (accent, sub, _info)) in zip(cols, status_clientes.items()):
+            mapa_status = {'ok': 'pronto', 'pend': 'aguardando', 'zero': 'erro', 'enviado': 'enviado'}
+            _envio_card(col, nome, mapa_status[accent].upper(), sub, accent)
+
+        st.markdown("<hr style='margin:8px 0;border:none;border-top:1px solid #e8edf5'>", unsafe_allow_html=True)
+
+        # Detalhes + ações por cliente
+        for nome, cfg in ENVIO_DIARIO_CLIENTES.items():
+            accent, sub, info = status_clientes[nome]
+            ja_enviado = (accent == 'enviado')
+
+            with st.container():
+                hcol, bcol = st.columns([4, 1])
+                with hcol:
+                    st.markdown(f"**{nome}**  ·  <span style='font-size:11px;color:#64748b'>{cfg['assunto'].format(data=data_exibicao)}</span>", unsafe_allow_html=True)
+                with bcol:
+                    if ja_enviado:
+                        if st.button("↩ desfazer envio", key=f"envio_undo_{nome}", use_container_width=True):
+                            _envio_log_desmarcar(data_yyyymmdd, nome)
+                            st.rerun()
+
+                # Arquivos encontrados / faltando
+                fcol1, fcol2 = st.columns(2)
+                with fcol1:
+                    if info['xmls_ok'] or info['extras_ok']:
+                        st.markdown("<div style='font-size:11px;color:#22c55e;font-weight:700'>ENCONTRADOS</div>", unsafe_allow_html=True)
+                        for caminho in info['xmls_ok'] + info['extras_ok']:
+                            st.markdown(f"<div style='font-size:11px;color:#1a2540'>✅ {os.path.basename(caminho)}</div>", unsafe_allow_html=True)
+                with fcol2:
+                    falt_xml = info['xmls_falt']
+                    falt_ex = info['extras_falt']
+                    if falt_xml or falt_ex:
+                        st.markdown("<div style='font-size:11px;color:#f59e0b;font-weight:700'>FALTANDO</div>", unsafe_allow_html=True)
+                        for cod in falt_xml:
+                            st.markdown(f"<div style='font-size:11px;color:#9a3412'>⏳ {cod}_{data_yyyymmdd}*.xml</div>", unsafe_allow_html=True)
+                        for nome_arq in falt_ex:
+                            st.markdown(f"<div style='font-size:11px;color:#9a3412'>⏳ {nome_arq}</div>", unsafe_allow_html=True)
+
+                # Botão ação
+                if not ja_enviado and accent == 'ok':
+                    btncol, mkcol, _ = st.columns([2, 2, 4])
+                    with btncol:
+                        if st.button(f"📧 Abrir rascunho", key=f"envio_draft_{nome}", use_container_width=True, type="primary"):
+                            anexos = info['xmls_ok'] + info['extras_ok']
+                            ok, err = _envio_abrir_outlook(nome, cfg, anexos, data_exibicao)
+                            if ok:
+                                st.success(f"Rascunho aberto no Outlook — confira e clique em ENVIAR.")
+                            else:
+                                st.error(f"Erro ao abrir Outlook: {err}")
+                    with mkcol:
+                        if st.button(f"✅ Marcar como enviado", key=f"envio_mark_{nome}", use_container_width=True):
+                            _envio_log_marcar(data_yyyymmdd, nome)
+                            st.rerun()
+
+                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
 
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
@@ -849,6 +1141,10 @@ for i, d in enumerate(dias):
           </div>
         </div>
         """, unsafe_allow_html=True)
+
+
+# ── ENVIO DIÁRIO (XMLs Mellon) ────────────────────────────────────────────────
+render_envio_diario()
 
 
 # ── ESTEIRA INTRAG ────────────────────────────────────────────────────────────
