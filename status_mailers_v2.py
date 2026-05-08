@@ -480,6 +480,23 @@ def _envio_data_default():
     return d
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _envio_listar_pasta_xml():
+    """Lista arquivos da pasta Mellon (em rede X:) com cache de 60s."""
+    if not os.path.isdir(ENVIO_DIARIO_PASTA_XML):
+        return None  # pasta off
+    try:
+        return tuple(os.listdir(ENVIO_DIARIO_PASTA_XML))
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _envio_arquivo_existe(caminho):
+    """os.path.exists com cache de 60s — para extras de rede."""
+    return os.path.exists(caminho)
+
+
 def _envio_buscar_arquivos(cliente_cfg, data_yyyymmdd):
     """Para um cliente, retorna {
         'xmls_ok':[caminho], 'xmls_falt':[codigo],
@@ -488,10 +505,11 @@ def _envio_buscar_arquivos(cliente_cfg, data_yyyymmdd):
     xmls_ok, xmls_falt = [], []
     extras_ok, extras_falt = [], []
 
-    if not os.path.isdir(ENVIO_DIARIO_PASTA_XML):
-        return {'xmls_ok': [], 'xmls_falt': cliente_cfg['codigos'], 'extras_ok': [], 'extras_falt': [], 'pasta_off': True}
+    arquivos_pasta = _envio_listar_pasta_xml()
+    if arquivos_pasta is None:
+        return {'xmls_ok': [], 'xmls_falt': cliente_cfg['codigos'],
+                'extras_ok': [], 'extras_falt': [], 'pasta_off': True}
 
-    arquivos_pasta = os.listdir(ENVIO_DIARIO_PASTA_XML)
     for cod in cliente_cfg['codigos']:
         padrao = f"{cod}_{data_yyyymmdd}"
         achou = next((a for a in arquivos_pasta if a.startswith(padrao)), None)
@@ -502,7 +520,7 @@ def _envio_buscar_arquivos(cliente_cfg, data_yyyymmdd):
 
     for tpl in cliente_cfg.get('extras', []):
         caminho = tpl.format(data=data_yyyymmdd)
-        if os.path.exists(caminho):
+        if _envio_arquivo_existe(caminho):
             extras_ok.append(caminho)
         else:
             extras_falt.append(os.path.basename(caminho))
@@ -511,6 +529,7 @@ def _envio_buscar_arquivos(cliente_cfg, data_yyyymmdd):
             'extras_ok': extras_ok, 'extras_falt': extras_falt, 'pasta_off': False}
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def _envio_log_ler():
     if not os.path.exists(ENVIO_DIARIO_LOG):
         return {}
@@ -522,26 +541,30 @@ def _envio_log_ler():
 
 
 def _envio_log_marcar(data_yyyymmdd, cliente):
-    todo = _envio_log_ler()
+    todo = dict(_envio_log_ler())  # copia (cache devolve dict imutável-by-convention)
     todo.setdefault(data_yyyymmdd, {})
+    todo[data_yyyymmdd] = dict(todo[data_yyyymmdd])
     todo[data_yyyymmdd][cliente] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         os.makedirs(ENVIO_DIARIO_DIR, exist_ok=True)
         with open(ENVIO_DIARIO_LOG, 'w', encoding='utf-8') as f:
             json.dump(todo, f, indent=2, ensure_ascii=False)
+        _envio_log_ler.clear()
     except Exception as e:
         st.warning(f"Falha ao salvar log de envio: {e}")
 
 
 def _envio_log_desmarcar(data_yyyymmdd, cliente):
-    todo = _envio_log_ler()
+    todo = dict(_envio_log_ler())
     if data_yyyymmdd in todo and cliente in todo[data_yyyymmdd]:
+        todo[data_yyyymmdd] = dict(todo[data_yyyymmdd])
         todo[data_yyyymmdd].pop(cliente)
         if not todo[data_yyyymmdd]:
             todo.pop(data_yyyymmdd)
         try:
             with open(ENVIO_DIARIO_LOG, 'w', encoding='utf-8') as f:
                 json.dump(todo, f, indent=2, ensure_ascii=False)
+            _envio_log_ler.clear()
         except Exception as e:
             st.warning(f"Falha ao atualizar log: {e}")
 
