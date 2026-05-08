@@ -14,9 +14,11 @@ TIPO_FUNDOS = r"X:\BDM\Novo Modelo de Carteiras\Tipo_Fundos.xlsx"
 
 # INTRAG (esteira de boletagem Itau Vida)
 INTRAG_PASTA = r"Z:\Relações com Investidores - NOVO\Boletas Fundos\INTRAG"
-INTRAG_HEARTBEAT = os.path.join(INTRAG_PASTA, "agendador_heartbeat.txt")
-INTRAG_PROCESSADOS = os.path.join(INTRAG_PASTA, "processados_intrag.txt")
-INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_PASTA, "esteira_estado.json")
+# Scripts/runtime do robo ficam em _robo_automatico\ (TXTs gerados continuam na raiz)
+INTRAG_ROBO_DIR = os.path.join(INTRAG_PASTA, "_robo_automatico")
+INTRAG_HEARTBEAT = os.path.join(INTRAG_ROBO_DIR, "agendador_heartbeat.txt")
+INTRAG_PROCESSADOS = os.path.join(INTRAG_ROBO_DIR, "processados_intrag.txt")
+INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_ROBO_DIR, "esteira_estado.json")
 INTRAG_PASTA_NET = r"N:\Middle\Resgates\Codigos_movimentacoes_adm\Código Itaú"
 DIAS_PT   = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta"}
 DIAS_ABR  = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex"}
