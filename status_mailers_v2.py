@@ -603,6 +603,35 @@ def ref_de(d: datetime) -> datetime:
         prev -= timedelta(days=1)
     return prev
 
+
+# Cache de leitura I/O - reduz lentidao em reruns frequentes (autorefresh,
+# interacao com filtros). TTL 60s mantem dado fresco mas evita rescan a cada
+# clique. Auto-refresh do dash e a cada 120s, entao 60s nao atrapalha.
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_json_cached(path: str):
+    """Carrega JSON do disco, ou {} se nao existir. Cacheado 60s."""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _scan_pdfs_dia(d_ref: str):
+    """Retorna lista (nome_fundo, mtime_unix) para PDFs do dia. Cache 60s.
+    O calculo de 'atrasado' depende do dia de envio (d, nao d_ref), entao
+    fica fora desse cache - quem chama compara mtime com d.date()."""
+    pdfs = glob.glob(os.path.join(PDF_DIR, f"*_{d_ref}.pdf"))
+    resultado = []
+    for p in pdfs:
+        nome = os.path.basename(p).rsplit(f"_{d_ref}.pdf", 1)[0]
+        try:
+            mtime = os.path.getmtime(p)
+        except OSError:
+            continue
+        resultado.append((nome, mtime))
+    return resultado
+
 status     = {}
 erros      = {}
 horarios   = {}
@@ -616,27 +645,21 @@ for d in dias:
     d_ref = ref_de(d).strftime("%Y%m%d")
 
     def _load(prefix):
-        path = os.path.join(JSON_DIR, f"{prefix}_{d_ref}.json")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+        return _load_json_cached(os.path.join(JSON_DIR, f"{prefix}_{d_ref}.json"))
 
     # Carregar aprovados do dia (scan_outlook gera este JSON)
-    _aprov_path = os.path.join(JSON_DIR, f"aprovados_{d_ref}.json")
+    _aprov_data = _load_json_cached(os.path.join(JSON_DIR, f"aprovados_{d_ref}.json"))
     _aprov_manual = set()
     _aprov_site = set()
     _aprov_manual_erros = {}
-    if os.path.exists(_aprov_path):
-        with open(_aprov_path, "r", encoding="utf-8") as f:
-            _aprov_data = json.load(f)
-            # Normaliza nomes internos -> nomes exibidos no dash (ex: FCopel -> CAPITANIA FCOPEL)
-            _aprov_manual = set(DASH_DISPLAY_NAME.get(m, m) for m in _aprov_data.get("manual", []))
-            _aprov_site = set(_aprov_data.get("site", []))
-            _aprov_manual_erros = {
-                DASH_DISPLAY_NAME.get(k, k): v
-                for k, v in _aprov_data.get("manual_erros", {}).items()
-            }
+    if _aprov_data:
+        # Normaliza nomes internos -> nomes exibidos no dash (ex: FCopel -> CAPITANIA FCOPEL)
+        _aprov_manual = set(DASH_DISPLAY_NAME.get(m, m) for m in _aprov_data.get("manual", []))
+        _aprov_site = set(_aprov_data.get("site", []))
+        _aprov_manual_erros = {
+            DASH_DISPLAY_NAME.get(k, k): v
+            for k, v in _aprov_data.get("manual_erros", {}).items()
+        }
     manuais_aprovados[d_str] = _aprov_manual
 
     # Carregar aguardando (fundos com cota ausente no banco COTAS_CAP)
@@ -675,14 +698,12 @@ for d in dias:
         horarios[d_str]   = _load("horarios")
         timestamps[d_str] = {}
     else:
-        # Escaneia pasta de PDFs: quais fundos foram gerados e quando
-        pdfs = glob.glob(os.path.join(PDF_DIR, f"*_{d_ref}.pdf"))
+        # Escaneia pasta de PDFs (cacheado 60s para reduzir lentidao em Z:\)
         processados = set()
         ts_dia = {}
-        for p in pdfs:
-            nome = os.path.basename(p).rsplit(f"_{d_ref}.pdf", 1)[0]
+        for nome, mtime in _scan_pdfs_dia(d_ref):
             processados.add(nome)
-            dt_criacao = datetime.fromtimestamp(os.path.getmtime(p))
+            dt_criacao = datetime.fromtimestamp(mtime)
             atrasado   = dt_criacao.date() > d.date()
             ts_dia[nome] = {"dt": dt_criacao, "atrasado": atrasado}
         # Manual: check apenas se scan_outlook encontrou email "COTA DIARIA"
