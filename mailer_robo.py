@@ -478,9 +478,15 @@ def criar_rascunho_cobranca(data_completa, fundos_aguardando_info, tentativa=1):
         print(f"  ERRO ao criar rascunho de cobranca: {e}")
         return False
 
-def avaliar_alerta_cobranca():
-    """Verifica todos os arquivos aguardando_*.json e, para cada data com fundos pendentes
-    ha mais de ALERTA_COBRANCA_MINUTOS (e sem alerta enviado hoje), cria um rascunho."""
+def avaliar_alerta_cobranca(datas_permitidas=None):
+    """Verifica os arquivos aguardando_*.json e cria rascunho de cobranca SOMENTE
+    para as datas em datas_permitidas (set de YYYYMMDD). Quando None, considera
+    todas (compatibilidade).
+
+    Em uso normal recebe apenas o(s) data_ref do ciclo atual, que correspondem ao
+    DIA ATUAL DO DASH (o robo so le emails recebidos hoje). Pendencias de dias
+    ANTERIORES nao geram rascunho de cobranca - continuam no disco e aparecem
+    apenas na tabela do dash."""
     pasta_json = os.path.join(DIRETORIO, "json")
     if not os.path.isdir(pasta_json):
         return
@@ -490,6 +496,11 @@ def avaliar_alerta_cobranca():
         if not nome.startswith("aguardando_") or not nome.endswith(".json"):
             continue
         data_json = nome[len("aguardando_"):-len(".json")]  # ex: 20260422
+
+        # So cobra pelos dias do ciclo atual (= dia atual do dash). Dias anteriores
+        # continuam visiveis na tabela do dash, mas NAO geram rascunho no Outlook.
+        if datas_permitidas is not None and data_json not in datas_permitidas:
+            continue
 
         # Ja alertou recentemente? Pula. Senao, pode ser primeiro alerta ou re-cobranca.
         if not deve_enviar_alerta(data_json):
@@ -770,8 +781,10 @@ def processar_ciclo():
                 print(f"  [AGUARDANDO] Email ADM={e['adm']} tem {len(pendentes)} fundo(s) aguardando COTAS_CAP: {sorted(pendentes)}")
 
     # 7. Avaliar se precisa criar rascunho de cobranca (fundos aguardando ha > ALERTA_COBRANCA_MINUTOS)
+    # SO cobra pelas datas do ciclo atual (= dia atual do dash). Dias anteriores
+    # com pendencia nao geram rascunho - aparecem apenas na tabela do dash.
     try:
-        avaliar_alerta_cobranca()
+        avaliar_alerta_cobranca(set(datas_fundos.keys()))
     except Exception as e:
         print(f"  Aviso: avaliar_alerta_cobranca falhou ({e})")
 
