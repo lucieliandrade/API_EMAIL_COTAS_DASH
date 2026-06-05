@@ -79,8 +79,20 @@ st.set_page_config(page_title="RI | Dash Cotas", layout="wide", page_icon="📬"
 LOGIN_USER = "RI"
 LOGIN_PASS = "Capitania2025!"
 
+# Token de auto-login: mantem o MESMO login/senha (RI/Capitania2025!), mas permite
+# que a janela dedicada do dash (keepalive_dash_chrome, na maquina servidora) entre
+# direto sem redigitar. Outras maquinas continuam com o login normal por formulario.
+AUTO_LOGIN_TOKEN = "ri-dash-local"
+
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
+
+# Auto-login somente quando a URL traz o token correto (usado so pela janela dedicada).
+try:
+    if not st.session_state.autenticado and st.query_params.get("k") == AUTO_LOGIN_TOKEN:
+        st.session_state.autenticado = True
+except Exception:
+    pass
 
 if not st.session_state.autenticado:
     st.markdown("<br><br>", unsafe_allow_html=True)

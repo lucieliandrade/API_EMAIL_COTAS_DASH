@@ -3,7 +3,7 @@
 # A cada 60s verifica se a janela dedicada (modo --app, perfil proprio) existe;
 # se foi fechada, reabre. Deteccao confiavel via --user-data-dir dedicado
 # (a janela --app roda como instancia propria, com cmdline identificavel).
-$url    = 'http://192.168.3.83:8502'
+$url    = 'http://192.168.3.83:8502/?k=ri-dash-local'
 $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 $prof   = Join-Path $env:LOCALAPPDATA 'DashCotasChrome'
 
