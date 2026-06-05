@@ -13,8 +13,8 @@ cd /d "C:\Users\lucieli.andrade\OneDrive - Capitania S.A\DASH_2026\API_EMAIL_COT
 set "STREAMLIT=C:\Users\lucieli.andrade\AppData\Local\Programs\Python\Python314\Scripts\streamlit.exe"
 set "LOG=dash_watchdog_log.txt"
 
-:: Abre o dash no Chrome uma vez, ao subir o watchdog
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" "http://192.168.3.78:8502"
+:: NAO abre o Chrome aqui. A janela do dash e gerenciada pelo keepalive_dash_chrome.bat,
+:: que reabre sozinho se ela for fechada (qualquer horario do dia).
 
 :loop
 echo [%date% %time%] Iniciando Streamlit (porta 8502)...>> "%LOG%"
