@@ -453,6 +453,7 @@ def render_intrag_esteira():
         _intrag_step_card(cols[6], '7', 'Arquivo pasta net', *s7)
 
         if is_dia_util:
+            hoje_iso = agora.date().isoformat()
             ck_cols = st.columns(7)
             ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
             ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
@@ -463,7 +464,8 @@ def render_intrag_esteira():
                 (ck_cols[5], 'liquidado', s6[3]),
             ]:
                 with col:
-                    novo = st.checkbox('feito', value=marcado, key=f'intrag_{chave}', label_visibility='collapsed')
+                    # key inclui data: evita session_state do dia anterior re-marcar no dia novo
+                    novo = st.checkbox('feito', value=marcado, key=f'intrag_{hoje_iso}_{chave}', label_visibility='collapsed')
                     if novo != marcado:
                         _intrag_marcar(chave, novo)
                         st.rerun()
@@ -472,8 +474,10 @@ def render_intrag_esteira():
 
 # ── ENVIO DIÁRIO (XMLs Mellon: ICATU / Aquila / BASF) ────────────────────────
 def _envio_data_default():
-    """D-1 útil (pula fim de semana e feriado). Default ao abrir o dash."""
-    br_holidays = holidays.country_holidays('BR')
+    """D-1 útil (pula fim de semana e feriado de mercado B3/BVMF). Default ao abrir o dash.
+    Usa o calendario B3 (nacionais + Corpus Christi, Carnaval e Sexta-feira Santa)."""
+    anos = [datetime.now().year - 1, datetime.now().year]
+    br_holidays = holidays.financial_holidays('BVMF', years=anos)
     d = datetime.now().date() - timedelta(days=1)
     while d.weekday() >= 5 or d in br_holidays:
         d -= timedelta(days=1)
@@ -800,9 +804,14 @@ if "offset" not in st.session_state:
 
 today  = datetime.today()
 
-# Feriados nacionais + SP para o ano corrente e adjacentes
+# Calendario B3/BVMF: e o calendario que determina quando EXISTE cota (dias de
+# mercado/NAV). Ja inclui TODOS os feriados nacionais + Corpus Christi, Carnaval e
+# Sexta-feira Santa. Exclui de proposito feriados puramente estaduais/municipais de
+# SP (raros, ex: 09/07), que sao dias de mercado normais com cota.
+# Sem o calendario certo, o D-1 util do dash (ref_de) calcula a data de referencia
+# errada em torno desses feriados e a coluna do dia fica vazia / cota na coluna errada.
 _anos_feriados = [today.year - 1, today.year, today.year + 1]
-feriados_br = holidays.country_holidays('BR', subdiv='SP', years=_anos_feriados)
+feriados_br = holidays.financial_holidays('BVMF', years=_anos_feriados)
 
 monday = today - timedelta(days=today.weekday()) + timedelta(weeks=st.session_state.offset)
 dias   = [monday + timedelta(days=i) for i in range(5)]
