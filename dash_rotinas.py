@@ -223,6 +223,13 @@ with st.sidebar:
         st.warning("Visualizando um dia anterior (histórico).")
     st.caption("D0 = hoje. Cada dia começa zerado; o estado fica salvo por data.")
     st.divider()
+    if st.button("🔁 Atualizar", use_container_width=True, type="primary"):
+        # Limpa o estado da sessao deste dia -> recarrega do disco (pega o que
+        # outras pessoas marcaram). Os widgets re-iniciam a partir do JSON.
+        _ds = dia_sel.strftime("%Y%m%d")
+        for _id in TODOS_IDS:
+            st.session_state.pop(f"{_ds}::{_id}", None)
+        st.rerun()
     if st.button("🔄 Reiniciar este dia", use_container_width=True):
         reiniciar_dia(dia_sel.strftime("%Y%m%d"))
         st.rerun()
@@ -304,6 +311,18 @@ def render_item(it):
         )
 
 
+# ── FILTRO POR ESTADO ────────────────────────────────────────────────────────
+filtro = st.pills(
+    "Mostrar", OPCOES, selection_mode="multi", default=OPCOES,
+    format_func=lambda o: f"{ICONE_ESTADO[o]} {o}",
+    key="filtro_estado",
+)
+filtro_efetivo = filtro if filtro else OPCOES  # nada selecionado = mostra tudo
+if filtro and len(filtro) < len(OPCOES):
+    st.caption(f"Filtrando: {', '.join(filtro_efetivo)}")
+st.markdown("<br>", unsafe_allow_html=True)
+
+algum_visivel = False
 for sec in CHECKLIST:
     ids = [it["id"] for it in sec["itens"]]
     s_feito = sum(1 for i in ids if _val(i) == "Feito")
@@ -311,6 +330,11 @@ for sec in CHECKLIST:
     s_aplic = len(ids) - s_na
     completa = s_aplic > 0 and s_feito == s_aplic
     selo = "✔️" if completa else f"{s_feito}/{s_aplic}"
+
+    visiveis = [it for it in sec["itens"] if _val(it["id"]) in filtro_efetivo]
+    if not visiveis:
+        continue  # esconde seção sem itens no filtro atual
+    algum_visivel = True
     with st.container(border=True):
         st.markdown(
             f"<span class='sec-title'>{sec['icone']} {sec['secao']}</span> "
@@ -318,7 +342,10 @@ for sec in CHECKLIST:
             + (f" · {s_na} N/A" if s_na else "") + "</span>",
             unsafe_allow_html=True,
         )
-        for it in sec["itens"]:
+        for it in visiveis:
             render_item(it)
+
+if not algum_visivel:
+    st.info("Nenhum item no filtro selecionado.")
 
 st.caption("As marcações são salvas automaticamente. Auto-atualiza a cada 2 min.")
