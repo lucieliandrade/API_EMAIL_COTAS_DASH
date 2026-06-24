@@ -31,3 +31,7 @@ mailer_robo.lock
 # Logs runtime
 robo_log.txt
 streamlit_log.txt
+rotinas_watchdog_log.txt
+
+# Estado diario do dash de rotinas (checklist) - nao versionar
+rotinas_estado/
