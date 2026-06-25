@@ -557,9 +557,16 @@ def _envio_log_ler():
 
 
 def _envio_log_marcar(data_yyyymmdd, cliente):
-    todo = dict(_envio_log_ler())  # copia (cache devolve dict imutável-by-convention)
+    # Le DIRETO do disco (nao do cache de 60s) para nao apagar a marcacao que
+    # outra pessoa do time acabou de gravar no mesmo arquivo compartilhado.
+    todo = {}
+    if os.path.exists(ENVIO_DIARIO_LOG):
+        try:
+            with open(ENVIO_DIARIO_LOG, 'r', encoding='utf-8') as f:
+                todo = json.load(f)
+        except Exception:
+            todo = {}
     todo.setdefault(data_yyyymmdd, {})
-    todo[data_yyyymmdd] = dict(todo[data_yyyymmdd])
     todo[data_yyyymmdd][cliente] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         os.makedirs(ENVIO_DIARIO_DIR, exist_ok=True)
@@ -610,8 +617,10 @@ Informação confidencial para uso exclusivo pelo destinatário da mensagem. Con
 </p></body></html>"""
 
 
-def _envio_abrir_outlook(cliente, cliente_cfg, anexos, data_exibicao):
-    """Abre rascunho no Outlook (Display, NUNCA Send)."""
+def _envio_abrir_outlook(cliente_cfg, anexos, data_exibicao):
+    """Abre o rascunho no Outlook (Display, NUNCA Send). So a Lucieli usa o dash,
+    na maquina servidora, entao o rascunho abre direto no Outlook dela.
+    Retorna (True, None) ou (False, motivo)."""
     try:
         import pythoncom
         import win32com.client as win32
@@ -643,6 +652,34 @@ _ENVIO_PALETA = {
 }
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _envio_ja_enviado(assunto_exato):
+    """Confere na CAIXA DE ENTRADA padrao se ja existe e-mail com este assunto
+    exato = prova de que o cliente JA foi enviado (To/CC=invest@ entrega copia a
+    todos do time). Mais confiavel que qualquer flag manual. Cache 120s.
+    Retorna (True, 'DD/MM HH:MM', remetente) ou (False, None, None)."""
+    try:
+        import pythoncom
+        import win32com.client as win32
+        pythoncom.CoInitialize()
+        ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
+        inbox = ns.GetDefaultFolder(6)
+        itens = inbox.Items
+        try:
+            res = itens.Restrict("[Subject] = '" + assunto_exato.replace("'", "''") + "'")
+        except Exception:
+            res = itens
+        for msg in res:
+            try:
+                if str(msg.Subject).strip() == assunto_exato:
+                    return True, msg.ReceivedTime.strftime('%d/%m %H:%M'), str(msg.SenderName)
+            except Exception:
+                continue
+        return False, None, None
+    except Exception:
+        return False, None, None
+
+
 def render_envio_diario():
     """Seção 'Envio Diário · XMLs Mellon' — ICATU / Aquila / BASF (versão compacta)."""
     if 'envio_data' not in st.session_state:
@@ -651,16 +688,18 @@ def render_envio_diario():
     data_yyyymmdd = data_sel.strftime('%Y%m%d')
     data_exibicao = data_sel.strftime('%d/%m/%Y')
 
-    log = _envio_log_ler().get(data_yyyymmdd, {})
     status_clientes = {}
     for nome, cfg in ENVIO_DIARIO_CLIENTES.items():
         info = _envio_buscar_arquivos(cfg, data_yyyymmdd)
         falt = info['xmls_falt'] + info['extras_falt']
         n_total = len(cfg['codigos']) + len(cfg.get('extras', []))
         n_ok = len(info['xmls_ok']) + len(info['extras_ok'])
-        if nome in log:
-            hr = log[nome][-8:-3]
-            status_clientes[nome] = ('enviado', f'às {hr}', info, n_ok, n_total)
+        # Fonte da verdade: a caixa de entrada (cópia invest@). Se ja saiu, mostra enviado.
+        assunto = cfg['assunto'].format(data=data_exibicao)
+        ja, hr_env, remet = _envio_ja_enviado(assunto)
+        if ja:
+            sub = f'enviado {hr_env}' + (f' · {remet.split()[0]}' if remet else '')
+            status_clientes[nome] = ('enviado', sub, info, n_ok, n_total)
         elif info.get('pasta_off'):
             status_clientes[nome] = ('zero', 'pasta X: offline', info, 0, n_total)
         elif not falt:
@@ -734,25 +773,24 @@ def render_envio_diario():
 
             with cacao:
                 if ja_enviado:
-                    if st.button("↩ desfazer", key=f"envio_undo_{nome}", use_container_width=True):
-                        _envio_log_desmarcar(data_yyyymmdd, nome)
-                        st.rerun()
+                    st.markdown(
+                        "<div style='padding-top:10px;font-size:11px;color:#1e40af;"
+                        "font-weight:600'>✔ confirmado na caixa</div>",
+                        unsafe_allow_html=True)
                 elif accent == 'ok':
-                    bc1, bc2 = st.columns(2)
-                    with bc1:
-                        if st.button("📧 Rascunho", key=f"envio_draft_{nome}",
-                                     use_container_width=True, type="primary"):
-                            anexos = info['xmls_ok'] + info['extras_ok']
-                            ok, err = _envio_abrir_outlook(nome, cfg, anexos, data_exibicao)
-                            if ok:
-                                st.toast(f"Rascunho {nome} aberto no Outlook", icon="✉️")
-                            else:
-                                st.error(f"Erro Outlook: {err}")
-                    with bc2:
-                        if st.button("✓ enviado", key=f"envio_mark_{nome}",
-                                     use_container_width=True):
-                            _envio_log_marcar(data_yyyymmdd, nome)
-                            st.rerun()
+                    # 100% dos arquivos -> abre o rascunho no Outlook (Display, NUNCA Send).
+                    # Nao marca flag: quando o e-mail for enviado, a copia cai na caixa
+                    # (invest@) e o card vira 'ENVIADO' sozinho - prova real de envio.
+                    if st.button("📧 Abrir rascunho", key=f"envio_draft_{nome}",
+                                 use_container_width=True, type="primary",
+                                 help="Abre o rascunho no Outlook. Revise e envie — ao enviar, "
+                                      "o card vira ENVIADO automaticamente (detecta na caixa)."):
+                        anexos = info['xmls_ok'] + info['extras_ok']
+                        ok, err = _envio_abrir_outlook(cfg, anexos, data_exibicao)
+                        if ok:
+                            st.toast(f"Rascunho {nome} aberto no Outlook", icon="✉️")
+                        else:
+                            st.error(f"Erro Outlook: {err}")
                 else:
                     # mostra chips dos faltantes (apenas códigos curtos)
                     falt = info['xmls_falt'] + [os.path.basename(x).replace(f'_{data_yyyymmdd}.xlsx', '') for x in info['extras_falt']]
@@ -1100,7 +1138,16 @@ if _orfas_hoje:
     """, unsafe_allow_html=True)
 
 # ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
-_aguard_hoje = aguardando.get(_hoje_str, {})
+# So mostra fundos que AINDA nao foram processados/enviados hoje. Se o fundo ja
+# aparece como ✅ na tabela (esta no set de processados), some do banner sozinho -
+# mesmo que a entrada em aguardando_<ref>.json nao tenha sido removida pelo robo.
+_proc_hoje = status.get(_hoje_str)
+_proc_hoje = _proc_hoje if isinstance(_proc_hoje, set) else set()
+_aguard_hoje = {
+    _f: _info
+    for _f, _info in aguardando.get(_hoje_str, {}).items()
+    if _f not in _proc_hoje
+}
 if _aguard_hoje:
     _linhas = []
     for _f, _info in sorted(_aguard_hoje.items()):
