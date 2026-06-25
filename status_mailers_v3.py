@@ -1,3 +1,59 @@
+"""
+===============================================================================
+ DASH DE COTAS DIÁRIAS  ·  Capitânia Investimentos / Relações com Investidores
+===============================================================================
+
+ O QUE É ISTO?
+   Um painel web (Streamlit) que mostra o status do envio diário das cotas dos
+   fundos. Ele NÃO envia e-mail e NÃO decide nada — funciona como o painel de um
+   carro: apenas LÊ arquivos deixados pelos robôs e pinta a tela de verde/
+   amarelo/vermelho. Quem faz o trabalho são outros programas:
+     - scan_outlook.py  -> lê o Outlook e gera os .json de aprovações/erros
+     - mailer_robo.py   -> processa as cotas e gera os PDFs
+     - watchdog_robo.py -> vigia se o robô principal travou
+   Se um robô para, o dash mostra "Parado", mas ele mesmo continua funcionando.
+
+ COMO RODA
+   auto_dash.bat  ->  streamlit run  ->  http://192.168.3.81:8502  (login RI)
+   Recarrega sozinho a cada 2 min (st_autorefresh).
+
+ MAPA DO CÓDIGO (procure por estes marcadores "── ... ──" ao navegar):
+   LOGIN ................. tela de usuário/senha + auto-login por token (?k=)
+   CSS .................. estilos visuais dos cards e da tabela
+   INTRAG .............. esteira de 7 steps das boletas Itaú Vida
+   ENVIO DIÁRIO ........ XMLs Mellon (ICATU / Aquila / BASF)
+   DADOS ............... get_fundos(): lê Tipo_Fundos.xlsx (lista de fundos)
+   SEMANA .............. calcula os 5 dias e o calendário de feriados B3/BVMF
+   HEADER .............. cabeçalho azul
+   STATUS DO ROBÔ ...... a "bolinha" (verde/amarelo/vermelho) + banner se parado
+   CARREGAR JSONs ...... lê PDFs e .json de cada dia -> monta o status de cada fundo
+   BANNERS ............. alertas de órfãs e de fundos aguardando cota (COTAS_CAP)
+   CARDS DOS DIAS ...... os 5 cartões de resumo da semana
+   FILTROS / TABELA .... a grade fundo × dia (coração do dash)
+   PENDENTES HOJE ...... lista os fundos que ainda não saíram
+
+ CONCEITO QUE MAIS CONFUNDE — a data de referência (D-1):
+   A COLUNA é o dia do ENVIO, mas a COTA é sempre do dia útil ANTERIOR.
+   Ex.: coluna Quarta 01/04 -> procura o arquivo de 31/03 (terça).
+        coluna Segunda     -> procura o de sexta (pula o fim de semana).
+   Por isso usamos o calendário B3/BVMF: ele pula feriados e fins de semana
+   corretamente ao calcular esse D-1 (função ref_de()).
+
+ TIPOS DE FUNDO (coluna "Tipo"): muda como o dash confirma o envio:
+   Auto   -> confirma sozinho pelo PDF que aparece na pasta de PDFs
+   Site   -> confirma pela aprovação registrada pelo scan_outlook
+   Manual -> alguém envia na mão; aparece "ENVIAR" quando o e-mail é aprovado
+
+ ONDE FICAM AS FONTES DE DADOS (se a pasta cair, a seção fica vazia — não é bug):
+   Lista de fundos ....... X:\...\Tipo_Fundos.xlsx
+   Aprovações/erros ...... Z:\...\cotas\json\*.json   (scan_outlook)
+   PDFs das cotas ........ Z:\...\cotas\PDFs\         (mailer_robo)
+   Log do robô ........... robo_log.txt (ao lado deste arquivo)
+
+ >>> MANUAL COMPLETO, em linguagem para qualquer pessoa: MANUAL_DASH_COTAS.md <<<
+===============================================================================
+"""
+
 import streamlit as st
 import pandas as pd
 import json
