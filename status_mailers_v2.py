@@ -66,6 +66,10 @@ MANUAIS_LISTA = [
     "OPOR IMOB FII", "OPOR IMOB SUBCLA", "OPOR IMOB SUBCLB", "OPOR IMOB SUBCLC",
 ]
 
+# Fundos que o robo escreve nos JSONs (aguardando/tentativas) mas que NAO sao
+# tratados pelo dash. Devem ser ignorados nos banners de aviso para nao poluir.
+IGNORAR_AVISOS = {"ARTON JP", "CAPITANIA FIAGRO"}
+
 # Mapa de nomes antigos (em JSONs do scan_outlook) para o nome exibido no dash.
 # Usado ao ler aprovados_*.json para normalizar nomes historicos.
 DASH_DISPLAY_NAME = {
@@ -1115,7 +1119,11 @@ total = len(fundos)
 
 # ── BANNER: TENTATIVAS ORFAS (REQUER REVISAO HUMANA) ─────────────────────────
 _hoje_str = today.strftime("%Y%m%d")
-_orfas_hoje = orfas.get(_hoje_str, {})
+_orfas_hoje = {
+    _f: _info
+    for _f, _info in orfas.get(_hoje_str, {}).items()
+    if _f not in IGNORAR_AVISOS
+}
 if _orfas_hoje:
     _linhas_orfas = []
     for _f, _info in sorted(_orfas_hoje.items()):
@@ -1146,7 +1154,7 @@ _proc_hoje = _proc_hoje if isinstance(_proc_hoje, set) else set()
 _aguard_hoje = {
     _f: _info
     for _f, _info in aguardando.get(_hoje_str, {}).items()
-    if _f not in _proc_hoje
+    if _f not in _proc_hoje and _f not in IGNORAR_AVISOS
 }
 if _aguard_hoje:
     _linhas = []
