@@ -113,6 +113,7 @@ FUNDOS_IGNORAR = {
     "FIDC AGRO", "FIDC CREDITO ENERGIA",
     "Capitania Prev Itau FIFE", "Capit_Previdence_Itau_FIFE", "Reit_Prev_FIFE",
     "ARTON FOF", "ARTON JP",
+    "FIAGRO XP",
 }
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_MAILER = os.path.join(SCRIPT_DIR, "mailer_v_auto.py")

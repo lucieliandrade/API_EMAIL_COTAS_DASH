@@ -68,7 +68,7 @@ MANUAIS_LISTA = [
 
 # Fundos que o robo escreve nos JSONs (aguardando/tentativas) mas que NAO sao
 # tratados pelo dash. Devem ser ignorados nos banners de aviso para nao poluir.
-IGNORAR_AVISOS = {"ARTON JP", "CAPITANIA FIAGRO"}
+IGNORAR_AVISOS = {"ARTON JP", "CAPITANIA FIAGRO", "FIAGRO XP"}
 
 # Mapa de nomes antigos (em JSONs do scan_outlook) para o nome exibido no dash.
 # Usado ao ler aprovados_*.json para normalizar nomes historicos.

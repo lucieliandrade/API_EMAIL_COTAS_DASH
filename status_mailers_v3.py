@@ -1242,7 +1242,7 @@ total = len(fundos)
 
 # Fundos que o robo escreve nos JSONs (aguardando/tentativas) mas que NAO sao
 # tratados pelo dash - nao devem aparecer nos banners de aviso.
-IGNORAR_AVISOS = {"ARTON FOF", "ARTON JP", "CAPITANIA FIAGRO"}
+IGNORAR_AVISOS = {"ARTON FOF", "ARTON JP", "CAPITANIA FIAGRO", "FIAGRO XP"}
 
 # ── BANNER: TENTATIVAS ORFAS (REQUER REVISAO HUMANA) ─────────────────────────
 _hoje_str = today.strftime("%Y%m%d")
