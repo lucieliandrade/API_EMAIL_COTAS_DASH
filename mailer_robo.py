@@ -14,7 +14,7 @@ Para parar: Ctrl+C
 """
 
 import win32com.client as win32
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import os
 import json
@@ -55,6 +55,37 @@ def eh_dado_ausente(motivo):
         return False
     m = str(motivo)
     return any(p in m for p in PADROES_DADO_AUSENTE)
+
+
+# Nomes de indice bonitos para exibir (fallback = o proprio token em MAIUSCULA)
+_INDICE_DISPLAY = {
+    "imab": "IMA-B", "imab5": "IMA-B 5", "imabtp": "IMA-B TP",
+    "cdi": "CDI", "ipca": "IPCA", "ifix": "IFIX",
+    "igpm": "IGP-M", "selic": "SELIC", "ima": "IMA",
+}
+
+def motivo_amigavel(motivo):
+    """Traduz o motivo bruto do mailer em uma frase clara do PORQUE nao deu para enviar.
+
+    Exemplos:
+      'Tabela do imab sem dados para o dia 2026-07-08' -> 'aguardando indice: IMA-B'
+      'Data ... nao consta no COTAS_CAP ...'            -> 'aguardando cota no COTAS_CAP'
+      'Carteira nao bate com COTAS_CAP'                 -> 'aguardando batimento COTAS_CAP (carteira nao bate)'
+    """
+    m = str(motivo or "").strip()
+    # Indice/benchmark faltando: "Tabela do <indice> sem dados ..."
+    mt = re.search(r'Tabela do\s+(\S+)\s+sem dados', m, re.IGNORECASE)
+    if mt:
+        tok = mt.group(1)
+        nome = _INDICE_DISPLAY.get(tok.lower(), tok.upper())
+        return f"aguardando indice: {nome}"
+    # Batimento (carteira nao confere com o banco)
+    if "não bate" in m or "nao bate" in m:
+        return "aguardando batimento COTAS_CAP (carteira nao bate)"
+    # Cota do fundo ausente/zerada no banco
+    if any(p in m for p in ("COTAS_CAP", "consta no COTAS", "zerad", "0 ou NaN")):
+        return "aguardando cota no COTAS_CAP"
+    return m or "sem motivo reportado"
 
 # Fundos manuais: enviados por email com PDF, NAO pelo mailer automatico.
 # O robo deve pular esses fundos (scan_outlook.py detecta o envio deles).
@@ -298,11 +329,13 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
 # - Removido DEPOIS que o robo confirmou um resultado (ok / aguardando dado / erro permanente).
 # - Se o robo morre no meio (crash, watchdog, energia), o fundo fica com tentativa registrada
 #   SEM processado correspondente -> tentativa ORFA.
-# - Tentativas orfas JAMAIS sao reprocessadas automaticamente. Requerem revisao humana.
-#   Usuario verifica se o rascunho foi aberto no Outlook:
-#     - Se foi: marca processados_*.json manualmente (ou apaga tentativas_*.json do fundo).
-#     - Se nao foi: apaga tentativas_*.json do fundo - robo tenta de novo no proximo ciclo.
-# Isso garante a regra "NUNCA duplicar" mesmo em cenarios extremos.
+# - AUTO-RECUPERACAO: no ciclo seguinte o robo confirma sozinho no Outlook, via
+#   cotas_no_outlook(), se o rascunho/email daquele fundo ja existe:
+#     - Se existe: marca processados_*.json e NAO repete (evita rascunho duplicado).
+#     - Se NAO existe: apaga a tentativa e reprocessa (ate MAX_FALHAS_POR_FUNDO no dia).
+#     - Se o Outlook estiver indisponivel: mantem ORFA para revisao humana (nao arrisca).
+# Isso garante a regra "NUNCA duplicar" mesmo em cenarios extremos, sem depender de
+# alguem destravar manualmente quando da' para confirmar o estado real.
 
 def _path_tentativas(data_ref_yyyymmdd):
     pasta_json = os.path.join(DIRETORIO, "json")
@@ -357,6 +390,90 @@ def listar_orfas_todas_datas():
     return orfas
 
 
+def cotas_no_outlook(data_ref_yyyymmdd):
+    """Descobre sozinho, no Outlook, quais fundos JA tem cota gerada/enviada para a data.
+
+    Varre TRES lugares procurando mensagens 'COTA DI...' com anexo no padrao
+    {fundo}_{data_ref}.pdf (mesmo criterio que o dash usa) e extrai o {fundo}:
+      - Rascunhos (Drafts): rascunho criado mas ainda nao enviado.
+      - Caixa de Entrada: o proprio email enviado volta (invest@ vai em copia).
+      - RI_MIDDLE > COTAS: para onde os e-mails de cota ja enviados sao movidos.
+    Assim o robo entende sozinho o que ja foi enviado e NUNCA reenvia (inclusive
+    envios MANUAIS, que nao ficam em processados_*.json).
+
+    Retorna:
+        set(fundos)  -> conjunto de fundos encontrados (pode ser vazio).
+        None         -> Outlook indisponivel/nao deu para checar. Quem chama deve
+                        tratar como "nao sei" e NAO reprocessar por conta propria.
+    Resultado cacheado por (data_ref) durante o ciclo via _cache_cotas_outlook.
+    """
+    padrao = re.compile(r'^(.+)_(\d{8})\.pdf$', re.IGNORECASE)
+    try:
+        ref_dt = datetime.strptime(data_ref_yyyymmdd, "%Y%m%d")
+    except Exception:
+        ref_dt = None
+    try:
+        ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
+    except Exception as e:
+        print(f"    Aviso: Outlook indisponivel ({e}) - nao da para confirmar envios.")
+        return None
+
+    pastas = []
+    try:
+        inbox = ns.GetDefaultFolder(6)          # Caixa de Entrada
+    except Exception:
+        inbox = None
+    try:
+        pastas.append((ns.GetDefaultFolder(16), False))  # Rascunhos (pequena)
+    except Exception:
+        pass
+    if inbox is not None:
+        pastas.append((inbox, True))
+        cotas = None
+        for _nome in ("***RI_MIDDLE", "RI_MIDDLE"):
+            try:
+                cotas = inbox.Folders(_nome).Folders("COTAS")
+                break
+            except Exception:
+                continue
+        if cotas is not None:
+            pastas.append((cotas, True))
+
+    if not pastas:
+        return None
+
+    encontrados = set()
+    limite = (ref_dt - timedelta(days=5)) if ref_dt else None
+    for pasta, eh_grande in pastas:
+        try:
+            itens = pasta.Items
+        except Exception:
+            continue
+        if eh_grande:
+            try:
+                itens.Sort("[ReceivedTime]", True)  # mais novo -> mais antigo
+            except Exception:
+                pass
+        for msg in itens:
+            if eh_grande and limite is not None:
+                try:
+                    rt = msg.ReceivedTime
+                    if datetime(rt.year, rt.month, rt.day) < limite:
+                        break
+                except Exception:
+                    pass
+            try:
+                if 'COTA DI' not in str(msg.Subject).upper():
+                    continue
+                for i in range(1, msg.Attachments.Count + 1):
+                    m = padrao.match(str(msg.Attachments.Item(i).FileName))
+                    if m and m.group(2) == data_ref_yyyymmdd:
+                        encontrados.add(m.group(1))
+            except Exception:
+                continue
+    return encontrados
+
+
 ################################## CONTROLE DE AGUARDANDO DADO ##################################
 
 def _path_aguardando(data_ref_yyyymmdd):
@@ -378,7 +495,9 @@ def carregar_aguardando(data_ref_yyyymmdd):
     return {}
 
 def registrar_aguardando(data_ref_yyyymmdd, fundo, motivo):
-    """Marca o fundo como aguardando dado. Mantem o timestamp da PRIMEIRA deteccao para calcular o tempo total."""
+    """Marca o fundo como aguardando dado. Mantem o timestamp da PRIMEIRA deteccao
+    (para calcular o tempo total) mas ATUALIZA o motivo a cada ciclo, para o dash
+    sempre mostrar a razao mais recente/clara."""
     arquivo = _path_aguardando(data_ref_yyyymmdd)
     ag = carregar_aguardando(data_ref_yyyymmdd)
     if fundo not in ag:
@@ -386,8 +505,10 @@ def registrar_aguardando(data_ref_yyyymmdd, fundo, motivo):
             "desde": datetime.now().isoformat(timespec='seconds'),
             "motivo": motivo,
         }
-        with open(arquivo, 'w', encoding='utf-8') as f:
-            json.dump(ag, f, ensure_ascii=False, indent=2)
+    else:
+        ag[fundo]["motivo"] = motivo  # mantem 'desde', atualiza a razao
+    with open(arquivo, 'w', encoding='utf-8') as f:
+        json.dump(ag, f, ensure_ascii=False, indent=2)
 
 def remover_aguardando(data_ref_yyyymmdd, fundo):
     """Remove o fundo do aguardando (ex: quando a cota finalmente chegou e o fundo processou OK)."""
@@ -662,18 +783,41 @@ def processar_ciclo():
 
         print(f"\n  Executando mailer para {len(fundos_a_tentar)} fundo(s)...")
 
+        # Descobre UMA vez por ciclo o que ja esta no Outlook (rascunho/enviado/pasta
+        # COTAS) para esta data. Serve para NUNCA reenviar e para auto-recuperar orfas.
+        # None = Outlook indisponivel -> nao da para confirmar (tratado com cautela abaixo).
+        cotas_outlook = cotas_no_outlook(data_json)
+
         for fundo in fundos_a_tentar:
             # Reler processados antes de cada fundo (evita duplicidade)
             if fundo in carregar_processados(data_json):
                 print(f"\n    [{fundo}] JA PROCESSADO (pulando)")
                 continue
 
-            # REGRA DE IDEMPOTENCIA: se ha tentativa iniciada sem conclusao -> ORFA.
-            # NUNCA reprocessa automaticamente. Requer revisao humana para evitar duplicidade.
-            if tentativa_orfa(data_json, fundo):
-                print(f"\n    [{fundo}] ORFA - tentativa anterior sem resultado. Revisar Outlook manualmente.")
-                print(f"    [{fundo}] Para destravar: deletar entrada em tentativas_{data_json}.json (ou o arquivo inteiro).")
+            # NUNCA REENVIAR: se a cota deste fundo ja esta no Outlook (rascunho, email
+            # enviado na caixa de entrada, ou ja movida p/ pasta COTAS) - inclusive envio
+            # MANUAL que nao passou pelo robo - marca como processado e nao gera de novo.
+            if cotas_outlook is not None and fundo in cotas_outlook:
+                salvar_processados(data_json, [fundo])
+                remover_aguardando(data_json, fundo)
+                remover_tentativa(data_json, fundo)
+                print(f"\n    [{fundo}] JA NO OUTLOOK (rascunho/enviado) - marcando processado, nao reenvia.")
                 continue
+
+            # AUTO-RECUPERACAO de tentativa ORFA (iniciada sem conclusao). Ja sabemos,
+            # de cotas_outlook, se o rascunho/email daquele fundo existe:
+            #   - existe (tratado acima em "JA NO OUTLOOK").
+            #   - Outlook indisponivel (None) -> nao da para confirmar. Mantem ORFA.
+            #   - confirmadamente ausente     -> nada foi criado. Limpa a tentativa e
+            #                                    reprocessa agora (limite: MAX_FALHAS_POR_FUNDO).
+            if tentativa_orfa(data_json, fundo):
+                if cotas_outlook is None:
+                    print(f"\n    [{fundo}] ORFA - nao foi possivel confirmar no Outlook. Mantendo para revisao.")
+                    print(f"    [{fundo}] Para destravar manualmente: deletar entrada em tentativas_{data_json}.json.")
+                    continue
+                remover_tentativa(data_json, fundo)
+                print(f"\n    [{fundo}] Tentativa anterior sem rascunho no Outlook - reprocessando automaticamente.")
+                # cai para o processamento normal abaixo (registrar_tentativa + subprocess)
 
             resultado_path = os.path.join(DIRETORIO, "json", f"resultado_{data_json}_{datetime.now().strftime('%H%M%S')}.json")
 
@@ -718,10 +862,13 @@ def processar_ciclo():
                         # Se for "dado ausente" (cota/benchmark nao chegou no banco), NAO conta como falha permanente.
                         # O robo vai tentar de novo no proximo ciclo ate o dado aparecer.
                         if eh_dado_ausente(motivo_real):
-                            registrar_aguardando(data_json, fundo, motivo_real)  # timestamp da primeira deteccao
-                            salvar_erro(data_json, fundo, f"AGUARDANDO DADO para COTAS_CAP: {motivo_real}")
+                            # Motivo CLARO do porque nao deu para enviar (aguardando indice: X,
+                            # aguardando cota no COTAS_CAP, aguardando batimento...).
+                            motivo_claro = motivo_amigavel(motivo_real)
+                            registrar_aguardando(data_json, fundo, motivo_claro)  # timestamp da primeira deteccao
+                            salvar_erro(data_json, fundo, f"AGUARDANDO - {motivo_claro}")
                             remover_tentativa(data_json, fundo)  # resultado conhecido (nao concluiu mas nao eh orfa)
-                            print(f"    [{fundo}] AGUARDANDO DADO para COTAS_CAP - {motivo_real}")
+                            print(f"    [{fundo}] {motivo_claro}  (detalhe: {motivo_real})")
                         else:
                             bloqueou = registrar_falha(fundo)
                             salvar_erro(data_json, fundo, motivo_real)
@@ -820,9 +967,9 @@ def main():
             print(f"  ATENCAO: {len(orfas)} tentativa(s) ORFA(S) detectada(s) no disco:")
             for data_ref, fundo, info in orfas:
                 print(f"    - {fundo} (ref {data_ref}) iniciada em {info.get('iniciado','?')}")
-            print("  Essas tentativas NAO serao reprocessadas automaticamente.")
-            print("  Revisar no Outlook: se o rascunho foi aberto, marcar como processado.")
-            print("  Para destravar um fundo: deletar entrada em tentativas_YYYYMMDD.json.")
+            print("  No proximo ciclo o robo confirma cada uma no Outlook e se auto-recupera:")
+            print("    rascunho ja existe -> marca processado; nao existe -> reprocessa.")
+            print("  So fica presa se o Outlook estiver indisponivel (revisar manualmente).")
             print("!" * 60)
     except Exception as e:
         print(f"  Aviso: falha ao listar orfas ({e})")

@@ -1067,6 +1067,62 @@ def _scan_pdfs_dia(d_ref: str):
         resultado.append((nome, mtime))
     return resultado
 
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _scan_cotas_email(drefs, dt_ini_iso, dt_fim_iso):
+    """Detecta cotas JA enviadas olhando a CAIXA DE ENTRADA do Outlook.
+
+    Todo e-mail 'COTA DIÁRIA | ...' tem invest@ em copia, entao a mensagem volta
+    para a caixa de entrada. Isso vale tanto para o que o robô envia quanto para o
+    que e' enviado MANUALMENTE (exceções) - que e' justamente o que o robô/PDF nao
+    enxerga. O nome do anexo segue sempre o padrao {fundo}_{YYYYMMDD}.pdf (o mesmo
+    {fundo} que o dash usa), entao da' para saber qual fundo foi enviado em cada
+    data de referencia.
+
+    Varre apenas a janela de datas da semana exibida (ordena do mais novo para o
+    mais antigo e para quando passa da janela). Retorna {d_ref: {fundo: dt_envio}}.
+    Cache 120s (igual ao auto-refresh). Se o Outlook estiver indisponivel, retorna
+    tudo vazio e o dash continua funcionando pelos PDFs/JSONs normalmente."""
+    res = {dr: {} for dr in drefs}
+    drefs_set = set(drefs)
+    try:
+        import pythoncom
+        import win32com.client as win32
+        pythoncom.CoInitialize()
+        ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
+        inbox = ns.GetDefaultFolder(6)
+        itens = inbox.Items
+        itens.Sort("[ReceivedTime]", True)  # mais novo -> mais antigo
+        dt_ini = datetime.fromisoformat(dt_ini_iso)
+        dt_fim = datetime.fromisoformat(dt_fim_iso)
+        padrao = re.compile(r'(.+)_(\d{8})\.pdf$', re.IGNORECASE)
+        for msg in itens:
+            try:
+                rt = msg.ReceivedTime
+                rt_naive = datetime(rt.year, rt.month, rt.day, rt.hour, rt.minute, rt.second)
+            except Exception:
+                continue
+            if rt_naive > dt_fim:
+                continue   # mais novo que a janela -> pula
+            if rt_naive < dt_ini:
+                break      # passou da janela (lista ordenada desc) -> encerra
+            try:
+                # 'COTA DI' pega 'COTA DIÁRIA'/'COTA DIARIA' e exclui 'Relatório de Cotas'
+                if 'COTA DI' not in str(msg.Subject).upper():
+                    continue
+                for i in range(1, msg.Attachments.Count + 1):
+                    m = padrao.match(msg.Attachments.Item(i).FileName)
+                    if not m:
+                        continue
+                    fundo, dref = m.group(1), m.group(2)
+                    if dref in drefs_set and fundo not in res[dref]:
+                        res[dref][fundo] = rt_naive
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return res
+
 status     = {}
 erros      = {}
 horarios   = {}
@@ -1074,6 +1130,13 @@ timestamps = {}   # {d_str: {fundo: {"dt": datetime, "atrasado": bool}}}
 manuais_aprovados = {}  # {d_str: set de fundos manuais aprovados}
 aguardando = {}   # {d_str: {fundo: {"desde": datetime, "motivo": str}}} - cota nao chegou no banco
 orfas      = {}   # {d_str: {fundo: {"iniciado": datetime}}} - tentativa sem resultado, requer revisao
+
+# Cotas detectadas pelo e-mail 'COTA DIÁRIA' na caixa de entrada (robô + manuais).
+# Varre so a janela de datas da semana exibida, de uma vez (cacheado 120s).
+_drefs_semana = tuple(sorted({ref_de(d).strftime("%Y%m%d") for d in dias}))
+_dt_ini_scan = datetime(dias[0].year, dias[0].month, dias[0].day)
+_dt_fim_scan = datetime(dias[-1].year, dias[-1].month, dias[-1].day) + timedelta(days=1)
+cotas_email = _scan_cotas_email(_drefs_semana, _dt_ini_scan.isoformat(), _dt_fim_scan.isoformat())
 
 for d in dias:
     d_str = d.strftime("%Y%m%d")
@@ -1150,6 +1213,14 @@ for d in dias:
         for fs in _aprov_site:
             if fs not in processados and fs not in _aguard_dia:
                 processados.add(fs)
+        # COTA DIÁRIA detectada na caixa de entrada (robô OU manual). Pega as
+        # exceções enviadas na mao, que nao geram PDF na pasta. So preenche o que
+        # ainda nao foi detectado pelo PDF; marca 'manual' para sinalizar (✋) que
+        # nao veio do robô.
+        for _fm, _dtm in cotas_email.get(d_ref, {}).items():
+            if _fm not in processados:
+                processados.add(_fm)
+                ts_dia[_fm] = {"dt": _dtm, "atrasado": False, "manual": True}
         status[d_str]     = processados
         # Filtrar orfas: se fundo ja esta em processados, nao eh mais orfa
         orfas[d_str] = {f: info for f, info in orfas[d_str].items() if f not in processados}
@@ -1199,14 +1270,18 @@ if _aguard_hoje:
     _linhas = []
     for _f, _info in sorted(_aguard_hoje.items()):
         _min = int((datetime.now() - _info["desde"]).total_seconds() / 60)
-        _linhas.append(f"<b>{_f}</b> ({_min} min)")
-    _lista_html = ", ".join(_linhas)
+        _motivo = _info.get("motivo", "").strip()
+        if _motivo:
+            _linhas.append(f"<b>{_f}</b> — {_motivo} ({_min} min)")
+        else:
+            _linhas.append(f"<b>{_f}</b> ({_min} min)")
+    _lista_html = "<br>".join(_linhas)
     _total = len(_aguard_hoje)
     st.markdown(f"""
     <div style="background:#fed7aa; border-left:5px solid #c2410c;
                 padding:12px 16px; border-radius:6px; margin-bottom:16px;">
       <div style="font-size:14px; font-weight:700; color:#9a3412; margin-bottom:6px;">
-        ⏳ {_total} fundo(s) aguardando cota ser lancada no banco COTAS_CAP
+        ⏳ {_total} fundo(s) aguardando dado para lancar a cota (COTAS_CAP / indice)
       </div>
       <div style="font-size:12px; color:#7c2d12;">
         {_lista_html}
@@ -1345,6 +1420,9 @@ for fundo in fundos_filtrados:
             ts = timestamps[d_str].get(fundo)
             if ts and ts["atrasado"]:
                 linha[col] = f"⚠️ {ts['dt'].strftime('%d/%m %H:%M')}"
+            elif ts and ts.get("manual"):
+                # Enviado MANUALMENTE (exceção) - detectado pelo e-mail, sem PDF.
+                linha[col] = f"✅ {ts['dt'].strftime('%H:%M')} ✋"
             else:
                 hora = ts["dt"].strftime("%H:%M") if ts else ""
                 linha[col] = f"✅ {hora}" if hora else "✅"
