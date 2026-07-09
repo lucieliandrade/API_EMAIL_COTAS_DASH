@@ -1,0 +1,183 @@
+==============================================================================
+ EXPLICACAO DAS MUDANCAS - ROBO DE COTAS E DASH
+ Data: 09/07/2026
+ (arquivo para leitura futura - linguagem simples)
+==============================================================================
+
+Este arquivo resume TUDO o que foi investigado e alterado no dia 09/07/2026,
+para quando bater a duvida "por que isso funciona assim?" ou "o que mudou?".
+
+Complementa o LEIA-ME.md (que e o mapa de "qual arquivo serve para que").
+
+
+------------------------------------------------------------------------------
+ 1) O PROBLEMA QUE INICIOU TUDO: o BNY12207 nao saia
+------------------------------------------------------------------------------
+
+O que aconteceu (dia de referencia 08/07):
+ - As 10:07 o robo tentou o BNY12207. O mailer respondeu "Tabela do imab sem
+   dados" -> o fundo foi para AGUARDANDO (certo: falta dado, ele reteta sozinho).
+ - As 10:40 o robo tentou de novo, mas o mailer QUEBROU sem gerar resultado.
+   Nesse caso o robo marcava o fundo como "ORFA" e, POR REGRA ANTIGA, NUNCA
+   tentava de novo sozinho - so destravava se alguem apagasse a entrada no
+   arquivo tentativas_20260708.json na mao.
+
+Causa raiz do "sem dados": o indice IMA-B do dia 08/07 ainda nao tinha entrado
+no banco. Quando entrou (verificamos: ja estava la), o unico impedimento que
+sobrou foi o estado "ORFA" preso.
+
+Resolucao no dia: apagamos a entrada orfã (tentativas_20260708.json) e o robo
+gerou o rascunho. Os outros travados pelo mesmo motivo (BNY12206, CAPITANIA
+CANA, CAPITANIA CORP FIDC) sairam sozinhos assim que o indice entrou.
+
+
+------------------------------------------------------------------------------
+ 2) O QUE MUDAMOS NO ROBO (mailer_robo.py) PARA NAO ACONTECER DE NOVO
+------------------------------------------------------------------------------
+
+O robo agora "entende sozinho" o que ja foi feito, olhando o Outlook:
+
+ a) NUNCA REENVIAR
+    Uma vez por ciclo o robo varre RASCUNHOS + CAIXA DE ENTRADA + pasta
+    RI_MIDDLE>COTAS procurando o anexo {fundo}_{data}.pdf. Se a cota daquele
+    fundo ja esta la (rascunho, enviada, ou movida) - INCLUSIVE se foi enviada
+    na mao, fora do robo - ele marca como processado e NAO gera de novo.
+
+ b) AUTO-RECUPERACAO de tentativa ORFA (crash/travamento)
+    - Se o rascunho JA existe no Outlook  -> marca processado e nao repete.
+    - Se confirmou que NAO existe          -> limpa a tentativa e tenta de novo
+                                              sozinho (ate 3x no dia).
+    - Se o Outlook estiver indisponivel    -> mantem como ORFA para revisao
+                                              (nao arrisca duplicar).
+
+ c) MOTIVO CLARO de quando NAO da para enviar
+    Em vez de mensagem tecnica, agora aparece:
+      - "aguardando indice: IMA-B" (ou CDI, IPCA, IFIX, IMA-B 5...)
+      - "aguardando cota no COTAS_CAP"
+      - "aguardando batimento COTAS_CAP (carteira nao bate)"
+
+REGRA DE OURO mantida: o robo NUNCA envia sozinho. So cria RASCUNHO (Display).
+Voce revisa e clica Enviar.
+
+IMPORTANTE: qualquer mudanca no mailer_robo.py so passa a valer depois de
+REINICIAR o robo (ele roda em loop na memoria). Enquanto nao reinicia, continua
+com o codigo antigo.
+
+
+------------------------------------------------------------------------------
+ 3) EMAIL DE APROVACAO QUE CHEGA SEM O NOME DO ADMINISTRADOR
+------------------------------------------------------------------------------
+
+Problema: o assunto deveria ser
+   "Carteiras Aprovadas - Fundos BTG - Sistema Backoffice"
+mas as vezes chega sem o ADM:
+   "Carteiras Aprovadas - Sistema Backoffice"
+
+Antes: o robo extraia o ADM do assunto; se nao achava, DESCARTAVA o email
+inteiro -> os fundos daquele email nunca eram processados.
+
+Agora: o robo NAO descarta mais. A lista de fundos e a data vem do CORPO do
+email (nao dependem do ADM). Se o ADM nao esta no assunto, ele tenta descobrir
+por palavra-chave (Bradesco/BTG/BNYM/Mellon/Itau/XP no assunto, remetente e
+corpo); se nao achar, segue com o rotulo "(ADM nao informado)". O ADM e so um
+rotulo/etiqueta - nao muda o processamento.
+
+Continua so aceitando como aprovacao os emails que tem "Carteiras Aprovadas" E
+"Sistema Backoffice" no assunto.
+
+
+------------------------------------------------------------------------------
+ 4) FUNDOS DE OUTROS TIMES (nao sao do RI)
+------------------------------------------------------------------------------
+
+Esses fundos NAO devem virar erro/orfã nem aparecer no dash. Ficam na lista
+FUNDOS_IGNORAR do robo (o robo nem tenta processar):
+   CAPITANIA INFRA4/5/6, CAPITANIA INFRAFIC, INFRA Y FIC, CAPITANIA LOG,
+   CPDI_1, CPDI F, FIDC AGRO, FIDC CREDITO ENERGIA, os FIFE (Prev Itau/Reit),
+   ARTON FOF, ARTON JP  <-- ARTON JP foi adicionado em 09/07/2026.
+
+Se aparecer outro fundo de outro time poluindo o dash, adicionar o nome exato
+a essa lista (FUNDOS_IGNORAR) no mailer_robo.py.
+
+
+------------------------------------------------------------------------------
+ 5) DE ONDE VEM OS DADOS (indices e cotas)
+------------------------------------------------------------------------------
+
+Tudo vem do SQL Server rds01.capitania.net, banco db_asset:
+   - IMA-B / IMA-B 5 .... tabela ANBIMA_IMA (coluna indice)
+   - CDI ................ tabela CDI_CETIP
+   - IPCA / projecao .... INDICE_INFLACAO / ANBIMA_PROJECAO_IGP
+   - IFIX ............... tabela IFIX
+   - Cotas dos fundos ... COTAS_CAP (e Cotas_Ret_Ajus)
+
+Por isso "aguardando indice: IMA-B" (falta na ANBIMA_IMA) e DIFERENTE de
+"aguardando cota no COTAS_CAP" (falta a cota do fundo). Quando o dado entra no
+banco, o robo (em aguardando) reteta sozinho no proximo ciclo e envia.
+
+A conexao (com senha) esta dentro do mailer_v_auto.py, que e do Matheus e NAO
+deve ser alterado.
+
+
+------------------------------------------------------------------------------
+ 6) A CONFUSAO DOS DOIS DASHS (v2 x v3) - LEIA COM ATENCAO
+------------------------------------------------------------------------------
+
+Existem DOIS arquivos que parecem "o dash de cotas":
+
+   status_mailers_v2.py  -> e o que esta NO AR, na porta 8502 (o que voce abre)
+   status_mailers_v3.py  -> versao NOVA, em teste, sobe so na porta 8504
+
+Pegadinha: o arquivo se chama "v3", mas o .bat chama de "versao nova (v2)". O
+que roda de verdade no 8502 e o v2. Para conferir o que esta no ar:
+   Get-CimInstance Win32_Process -Filter "name='python.exe' OR name='streamlit.exe'" |
+     Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine}} | Format-List
+
+Diferenca entre eles (apos os ajustes de 09/07):
+   v2 (no ar):
+     - NAO detecta envio manual (cota enviada na mao pode ficar como pendente).
+     - Banner "aguardando" generico ("aguardando COTAS_CAP").
+     - TEM os filtros de limpeza (esconde ja enviados e outros times).
+   v3 (teste, 8504):
+     - DETECTA envio manual (marca com ✋).
+     - Banner "aguardando" com MOTIVO claro (ex: "aguardando indice: IMA-B").
+     - Recebeu os filtros de limpeza do v2 em 09/07 -> agora tem o melhor dos dois.
+
+PLANO (pendente de decisao):
+   Promover o v3 a oficial. Passos:
+     1. [FEITO] corrigir o v3 (levar os filtros do v2).  <- ja feito em 09/07
+     2. [VOCE] testar o v3 no 8504 lado a lado com o 8502.
+     3. [SO COM SEU OK] virar a chave: apontar os .bat para o v3 no 8502,
+        mandar o v2 para a pasta Lixo/ e renomear o v3 para um nome unico
+        (ex: status_mailers.py). Assim acaba a dualidade de vez.
+
+
+------------------------------------------------------------------------------
+ 7) PENDENCIAS (o que ainda falta fazer)
+------------------------------------------------------------------------------
+
+ [ ] REINICIAR O ROBO - para ativar as melhorias do item 2, 3 e 4.
+     (feche a janela do robo/watchdog e abra de novo pelo .bat de sempre)
+
+ [ ] Testar o v3 no 8504 e decidir se vira o oficial (item 6, passo 3).
+
+ [ ] Limpezas opcionais:
+       - robo_log.txt costuma ficar ENORME (dezenas de MB) dentro do OneDrive.
+         Da para zerar de tempos em tempos.
+       - ProjetoRelatorioDiario.txt esta vazio (pode apagar).
+       - Ignorar no Git: dash_watchdog_log.txt e watchdog_estado.json.
+
+
+------------------------------------------------------------------------------
+ 8) COMMITS FEITOS EM 09/07/2026 (ja no GitHub)
+------------------------------------------------------------------------------
+
+   f7e93ae  robo: auto-recuperacao de orfas + nunca reenviar + motivo claro
+   4b9980f  robo: ignora ARTON JP
+   8f08e46  robo: processa email de aprovacao mesmo sem o ADM no assunto
+   3d7fa51  dash-v3: porta filtros do v2 (IGNORAR_AVISOS + esconder ja
+            processados) + cria LEIA-ME.md
+
+==============================================================================
+ Fim. Duvidas futuras: reler este arquivo + o LEIA-ME.md + o MANUAL_DASH_COTAS.md
+==============================================================================
