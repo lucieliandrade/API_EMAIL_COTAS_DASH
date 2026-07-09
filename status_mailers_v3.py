@@ -1240,9 +1240,17 @@ for d in dias:
 total = len(fundos)
 
 
+# Fundos que o robo escreve nos JSONs (aguardando/tentativas) mas que NAO sao
+# tratados pelo dash - nao devem aparecer nos banners de aviso.
+IGNORAR_AVISOS = {"ARTON FOF", "ARTON JP", "CAPITANIA FIAGRO"}
+
 # ── BANNER: TENTATIVAS ORFAS (REQUER REVISAO HUMANA) ─────────────────────────
 _hoje_str = today.strftime("%Y%m%d")
-_orfas_hoje = orfas.get(_hoje_str, {})
+_orfas_hoje = {
+    _f: _info
+    for _f, _info in orfas.get(_hoje_str, {}).items()
+    if _f not in IGNORAR_AVISOS
+}
 if _orfas_hoje:
     _linhas_orfas = []
     for _f, _info in sorted(_orfas_hoje.items()):
@@ -1265,7 +1273,17 @@ if _orfas_hoje:
     """, unsafe_allow_html=True)
 
 # ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
-_aguard_hoje = aguardando.get(_hoje_str, {})
+# So mostra fundos que AINDA nao foram processados/enviados hoje. Se o fundo ja
+# aparece como ✅ na tabela (esta no set de processados), some do banner sozinho -
+# mesmo que a entrada em aguardando_<ref>.json nao tenha sido removida pelo robo.
+# Tambem esconde os fundos de outros times (IGNORAR_AVISOS).
+_proc_hoje = status.get(_hoje_str)
+_proc_hoje = _proc_hoje if isinstance(_proc_hoje, set) else set()
+_aguard_hoje = {
+    _f: _info
+    for _f, _info in aguardando.get(_hoje_str, {}).items()
+    if _f not in _proc_hoje and _f not in IGNORAR_AVISOS
+}
 if _aguard_hoje:
     _linhas = []
     for _f, _info in sorted(_aguard_hoje.items()):
