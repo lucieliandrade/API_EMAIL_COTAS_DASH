@@ -183,6 +183,26 @@ sys.stderr = _Tee(sys.__stderr__, _log_file)
 
 ################################## LEITURA DE EMAILS DO OUTLOOK ##################################
 
+# ADMs conhecidos + palavras-chave para inferir o ADM quando o assunto vem SEM o
+# "Fundos <ADM>" (ex: "Carteiras Aprovadas - Sistema Backoffice"). Ordem importa.
+_ADM_KEYWORDS = (
+    ("Bradesco", ("bradesco",)),
+    ("BTG",      ("btg",)),
+    ("BNYM",     ("bnym", "mellon", "bny")),
+    ("Itau",     ("itau", "itaú")),
+    ("XP",       ("xp investimentos", "gestao xp", "gestão xp", "@xp")),
+)
+
+def _detectar_adm(texto):
+    """Tenta identificar o ADM por palavra-chave (assunto/remetente/corpo) quando o
+    assunto veio sem 'Fundos <ADM>'. Retorna o nome canonico ou None se nao reconhecer."""
+    t = (texto or "").lower()
+    for nome, chaves in _ADM_KEYWORDS:
+        if any(k in t for k in chaves):
+            return nome
+    return None
+
+
 def ler_emails_aprovacao():
     """
     Le TODOS os emails de aprovacao da Caixa de Entrada do Outlook recebidos hoje.
@@ -216,13 +236,18 @@ def ler_emails_aprovacao():
             if 'Carteiras Aprovadas' not in subject or 'Sistema Backoffice' not in subject:
                 continue
 
+            body = str(msg.Body)
+
             # Extrair ADM do assunto: "Carteiras Aprovadas - Fundos Bradesco - Sistema Backoffice"
             match_adm = re.search(r'Fundos\s+(.+?)\s*-\s*Sistema', subject)
-            if not match_adm:
-                continue
-            adm = match_adm.group(1).strip()
-
-            body = str(msg.Body)
+            if match_adm:
+                adm = match_adm.group(1).strip()
+            else:
+                # As vezes o assunto chega SEM o ADM (ex: "Carteiras Aprovadas - Sistema
+                # Backoffice"). NAO ignorar o email: a lista de fundos e a data vem do CORPO,
+                # entao o processamento NAO depende do nome do ADM no assunto (ele e so rotulo).
+                # Tenta inferir por palavra-chave; se nao achar, segue com rotulo generico.
+                adm = _detectar_adm(f"{subject}\n{getattr(msg, 'SenderName', '')}\n{body}") or "(ADM nao informado)"
 
             # Extrair data de referencia: "referentes a DD/MM"
             match_data = re.search(r'referentes a (\d{1,2}/\d{2})', body)
