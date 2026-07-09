@@ -44,9 +44,14 @@ FUNDOS_SITE = {
 
 
 def ref_de_hoje():
-    """Retorna a data de referencia (D-1 util)."""
+    """Retorna a data de referencia (D-1 util).
+    Usa o calendario B3/BVMF (mesmo do dash status_mailers_v2.ref_de): inclui
+    Corpus Christi, Carnaval e Sexta-feira Santa, que NAO entram em country_holidays
+    'BR'/'SP'. Sem isso, no dia util pos-feriado o scan calculava a ref errada
+    (ex: 05/06/2026 caia em 04/06 = Corpus Christi) e as aprovacoes manuais/site
+    iam para o aprovados_*.json errado, sumindo do dash."""
     hoje = datetime.today()
-    feriados = holidays.country_holidays('BR', subdiv='SP', years=[hoje.year - 1, hoje.year, hoje.year + 1])
+    feriados = holidays.financial_holidays('BVMF', years=[hoje.year - 1, hoje.year, hoje.year + 1])
     prev = hoje - timedelta(days=1)
     while prev.weekday() >= 5 or prev.date() in feriados:
         prev -= timedelta(days=1)

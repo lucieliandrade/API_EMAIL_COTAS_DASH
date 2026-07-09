@@ -186,6 +186,7 @@ A célula mostra o que aconteceu com aquele fundo naquele dia:
 | O que aparece | Significado |
 |---|---|
 | ✅ 14:30 | Enviado, com a hora |
+| ✅ 11:20 ✋ | Enviado **manualmente** (exceção) — detectado pelo e-mail "COTA DIÁRIA", não pelo robô |
 | ⚠️ 24/06 09:00 | Enviado **com atraso** (gerado depois do dia certo) |
 | ❌ | Pendente / não enviado |
 | ❌ Data errada (...) | Problema: o PDF tem data diferente da esperada |

@@ -32,6 +32,10 @@ mailer_robo.lock
 robo_log.txt
 streamlit_log.txt
 rotinas_watchdog_log.txt
+dash_watchdog_log.txt
+
+# Estado runtime do watchdog do dash
+watchdog_estado.json
 
 # Estado diario do dash de rotinas (checklist) - nao versionar
 rotinas_estado/

@@ -62,12 +62,17 @@ Get-CimInstance Win32_Process -Filter "name='python.exe' OR name='streamlit.exe'
 ---
 
 ## 📄 DOCUMENTAÇÃO / CONFIG
-| Arquivo | Serve para |
+Os textos de leitura ficam na subpasta **`documentacao/`**:
+| Arquivo (em documentacao/) | Serve para |
 |---|---|
 | MANUAL_DASH_COTAS.md | Manual passo a passo do dash de cotas |
+| EXPLICACAO_MUDANCAS_2026-07-09.txt | O que mudou no robô/dash e por quê (histórico) |
 | PLANO_MELHORIAS_SEGUNDA.md | Plano de melhorias (histórico) |
 | homologacao processo completo.txt | Anotação de teste de homologação |
-| ProjetoRelatorioDiario.txt | (vazio) |
+
+Na raiz ficam só os de config e este mapa:
+| Arquivo | Serve para |
+|---|---|
 | requirements.txt | Dependências Python (o que instalar) |
 | .gitignore | O que o Git deve ignorar |
 | LEIA-ME.md | Este mapa |

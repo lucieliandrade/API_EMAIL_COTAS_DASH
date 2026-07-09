@@ -50,7 +50,7 @@ r"""
    PDFs das cotas ........ Z:\...\cotas\PDFs\         (mailer_robo)
    Log do robô ........... robo_log.txt (ao lado deste arquivo)
 
- >>> MANUAL COMPLETO, em linguagem para qualquer pessoa: MANUAL_DASH_COTAS.md <<<
+ >>> MANUAL COMPLETO, em linguagem para qualquer pessoa: documentacao/MANUAL_DASH_COTAS.md <<<
 ===============================================================================
 """
 
