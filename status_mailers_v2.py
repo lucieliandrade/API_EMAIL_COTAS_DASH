@@ -841,6 +841,7 @@ def get_fundos():
         {"fundo": "CAPIT PREMIUM",   "ADM": "BNYM",     "Tipo": "Site"},
         {"fundo": "CAPIT PREV FDR",  "ADM": "BNYM",     "Tipo": "Site"},
         {"fundo": "CAPITANIA TOP",   "ADM": "BNYM",     "Tipo": "Site"},
+        {"fundo": "SITE",            "ADM": "Outro",    "Tipo": "Site"},
     ])
     df = pd.concat([df[["fundo", "ADM", "Tipo"]], extras], ignore_index=True)
     df = df.drop_duplicates(subset="fundo")
