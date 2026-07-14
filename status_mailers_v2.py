@@ -621,10 +621,22 @@ Informação confidencial para uso exclusivo pelo destinatário da mensagem. Con
 </p></body></html>"""
 
 
-def _envio_abrir_outlook(cliente_cfg, anexos, data_exibicao):
+def _envio_abrir_outlook(cliente_cfg, anexos, data_exibicao, n_esperado):
     """Abre o rascunho no Outlook (Display, NUNCA Send). So a Lucieli usa o dash,
     na maquina servidora, entao o rascunho abre direto no Outlook dela.
+
+    TUDO-OU-NADA: nunca abre rascunho incompleto. Revalida na HORA (sem cache) que
+    todos os n_esperado arquivos ainda existem e que cada anexo foi de fato
+    adicionado; se faltar/falhar qualquer um, DESCARTA o rascunho e retorna erro -
+    o cache de 60s pode estar defasado (arquivo movido/renomeado ou Mellon ainda
+    gravando o XML no momento do clique).
     Retorna (True, None) ou (False, motivo)."""
+    # 1. Revalida quantidade e existencia real (os.path.exists = tempo real, sem cache)
+    if len(anexos) != n_esperado:
+        return False, f"esperado {n_esperado} arquivos, mas so {len(anexos)} encontrados - rascunho NAO aberto"
+    sumiram = [os.path.basename(c) for c in anexos if not os.path.exists(c)]
+    if sumiram:
+        return False, f"arquivo(s) sumiram desde a ultima leitura: {', '.join(sumiram)} - rascunho NAO aberto (clique em Atualizar)"
     try:
         import pythoncom
         import win32com.client as win32
@@ -637,11 +649,24 @@ def _envio_abrir_outlook(cliente_cfg, anexos, data_exibicao):
             email.BCC = cliente_cfg['bcc']
         email.Subject = cliente_cfg['assunto'].format(data=data_exibicao)
         email.HTMLBody = _envio_corpo_html()
+        anexados = 0
         for caminho in anexos:
             try:
                 email.Attachments.Add(os.path.abspath(caminho))
+                anexados += 1
             except Exception as e:
-                st.warning(f"Falha ao anexar {os.path.basename(caminho)}: {e}")
+                # Aborta: nao deixa abrir rascunho faltando anexo. Descarta o item.
+                try:
+                    email.Close(1)  # olDiscard
+                except Exception:
+                    pass
+                return False, f"falha ao anexar {os.path.basename(caminho)}: {e} - rascunho NAO aberto"
+        if anexados != n_esperado:
+            try:
+                email.Close(1)
+            except Exception:
+                pass
+            return False, f"anexou {anexados}/{n_esperado} - rascunho NAO aberto"
         email.Display()
         return True, None
     except Exception as e:
@@ -829,11 +854,11 @@ def render_envio_diario():
                                  help="Abre o rascunho no Outlook. Revise e envie — ao enviar, "
                                       "o card vira ENVIADO automaticamente (detecta na caixa)."):
                         anexos = info['xmls_ok'] + info['extras_ok']
-                        ok, err = _envio_abrir_outlook(cfg, anexos, data_exibicao)
+                        ok, err = _envio_abrir_outlook(cfg, anexos, data_exibicao, n_total)
                         if ok:
                             st.toast(f"Rascunho {nome} aberto no Outlook", icon="✉️")
                         else:
-                            st.error(f"Erro Outlook: {err}")
+                            st.error(f"Rascunho NÃO aberto: {err}")
                 else:
                     # mostra chips dos faltantes (apenas códigos curtos)
                     falt = info['xmls_falt'] + [os.path.basename(x).replace(f'_{data_yyyymmdd}.xlsx', '') for x in info['extras_falt']]
