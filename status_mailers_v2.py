@@ -657,28 +657,60 @@ _ENVIO_PALETA = {
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _envio_ja_enviado(assunto_exato):
-    """Confere na CAIXA DE ENTRADA padrao se ja existe e-mail com este assunto
-    exato = prova de que o cliente JA foi enviado (To/CC=invest@ entrega copia a
-    todos do time). Mais confiavel que qualquer flag manual. Cache 120s.
-    Retorna (True, 'DD/MM HH:MM', remetente) ou (False, None, None)."""
+def _envio_ja_enviado(assunto_exato, prefixos_anexos):
+    """Prova real de que o cliente JA foi enviado. Procura na CAIXA DE ENTRADA
+    e/ou nas pastas ***RI_MIDDLE/COTAS e ***RI_MIDDLE/DIARIO um e-mail com o
+    assunto EXATO do dia E com TODOS os anexos esperados dentro (cada prefixo em
+    prefixos_anexos tem que casar com algum anexo). Como a copia cai em invest@,
+    achar o e-mail completo = prova de envio - mais confiavel que flag manual.
+    E-mail com assunto certo mas anexo faltando NAO conta como enviado.
+    Cache 120s. Retorna (True, 'DD/MM HH:MM', remetente) ou (False, None, None)."""
     try:
         import pythoncom
         import win32com.client as win32
         pythoncom.CoInitialize()
         ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
         inbox = ns.GetDefaultFolder(6)
-        itens = inbox.Items
-        try:
-            res = itens.Restrict("[Subject] = '" + assunto_exato.replace("'", "''") + "'")
-        except Exception:
-            res = itens
-        for msg in res:
+        pastas = [inbox]
+        # subpastas ***RI_MIDDLE / COTAS e ***RI_MIDDLE / DIARIO
+        for f in inbox.Folders:
+            if 'RI_MIDDLE' in str(f.Name).upper():
+                for sf in f.Folders:
+                    if str(sf.Name).upper().strip() in ('COTAS', 'DIÁRIO', 'DIARIO'):
+                        pastas.append(sf)
+                break
+        prefs = [p.upper() for p in prefixos_anexos]
+        for pasta in pastas:
+            itens = pasta.Items
             try:
-                if str(msg.Subject).strip() == assunto_exato:
-                    return True, msg.ReceivedTime.strftime('%d/%m %H:%M'), str(msg.SenderName)
+                res = itens.Restrict("[Subject] = '" + assunto_exato.replace("'", "''") + "'")
             except Exception:
-                continue
+                res = itens
+            for msg in res:
+                try:
+                    if str(msg.Subject).strip() != assunto_exato:
+                        continue
+                    # nomes dos anexos do e-mail
+                    nomes = []
+                    for i in range(1, msg.Attachments.Count + 1):
+                        try:
+                            nomes.append(str(msg.Attachments.Item(i).FileName).upper())
+                        except Exception:
+                            pass
+                    # TODOS os anexos esperados precisam estar presentes
+                    if any(not any(n.startswith(pref) for n in nomes) for pref in prefs):
+                        continue  # e-mail incompleto -> nao conta como enviado
+                    try:
+                        quando = msg.ReceivedTime.strftime('%d/%m %H:%M')
+                    except Exception:
+                        quando = ''
+                    try:
+                        remet = str(msg.SenderName)
+                    except Exception:
+                        remet = ''
+                    return True, quando, remet
+                except Exception:
+                    continue
         return False, None, None
     except Exception:
         return False, None, None
@@ -698,9 +730,16 @@ def render_envio_diario():
         falt = info['xmls_falt'] + info['extras_falt']
         n_total = len(cfg['codigos']) + len(cfg.get('extras', []))
         n_ok = len(info['xmls_ok']) + len(info['extras_ok'])
-        # Fonte da verdade: a caixa de entrada (cópia invest@). Se ja saiu, mostra enviado.
+        # Fonte da verdade: o e-mail (cópia invest@) na caixa de entrada e/ou nas
+        # pastas ***RI_MIDDLE/COTAS e /DIARIO. Precisa do assunto exato E de todos
+        # os anexos esperados dentro - assunto e anexos SEMPRE da mesma data.
         assunto = cfg['assunto'].format(data=data_exibicao)
-        ja, hr_env, remet = _envio_ja_enviado(assunto)
+        prefixos = tuple(
+            [f"{cod}_{data_yyyymmdd}" for cod in cfg['codigos']] +
+            [os.path.splitext(os.path.basename(tpl.format(data=data_yyyymmdd)))[0]
+             for tpl in cfg.get('extras', [])]
+        )
+        ja, hr_env, remet = _envio_ja_enviado(assunto, prefixos)
         if ja:
             sub = f'enviado {hr_env}' + (f' · {remet.split()[0]}' if remet else '')
             status_clientes[nome] = ('enviado', sub, info, n_ok, n_total)
