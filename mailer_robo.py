@@ -27,7 +27,7 @@ import threading
 import ctypes
 
 INTERVALO_MINUTOS = 2
-MAX_FALHAS_POR_FUNDO = 3        # apos 3 falhas seguidas, para de tentar no dia
+MAX_FALHAS_POR_FUNDO = 3        # (apenas informativo no log) NUNCA desiste: fundo aprovado eh retentado todo ciclo ate abrir o rascunho
 TIMEOUT_CICLO_SEG = 600          # watchdog do ciclo: MAIOR que timeout do subprocess (300s), evita matar o robo no meio e causar duplicidade
 DIRETORIO = r"Z:\Relações com Investidores - NOVO\codigos\cotas"
 
@@ -359,7 +359,7 @@ def salvar_erro(data_ref_yyyymmdd, fundo, motivo):
 # - AUTO-RECUPERACAO: no ciclo seguinte o robo confirma sozinho no Outlook, via
 #   cotas_no_outlook(), se o rascunho/email daquele fundo ja existe:
 #     - Se existe: marca processados_*.json e NAO repete (evita rascunho duplicado).
-#     - Se NAO existe: apaga a tentativa e reprocessa (ate MAX_FALHAS_POR_FUNDO no dia).
+#     - Se NAO existe: apaga a tentativa e reprocessa (segue tentando todo ciclo, nunca desiste).
 #     - Se o Outlook estiver indisponivel: mantem ORFA para revisao humana (nao arrisca).
 # Isso garante a regra "NUNCA duplicar" mesmo em cenarios extremos, sem depender de
 # alguem destravar manualmente quando da' para confirmar o estado real.
@@ -693,15 +693,17 @@ def _get_falhas():
     return _falhas_hoje
 
 def registrar_falha(fundo):
-    """Registra +1 falha para o fundo. Retorna True se atingiu o limite."""
+    """Registra +1 falha para o fundo (contador do dia, so para o log)."""
     falhas = _get_falhas()
     falhas[fundo] = falhas.get(fundo, 0) + 1
-    return falhas[fundo] >= MAX_FALHAS_POR_FUNDO
+    return falhas[fundo]
 
 def fundo_bloqueado(fundo):
-    """Retorna True se o fundo ja falhou demais hoje."""
-    falhas = _get_falhas()
-    return falhas.get(fundo, 0) >= MAX_FALHAS_POR_FUNDO
+    """NUNCA desiste de um fundo aprovado: retenta todo ciclo, no mesmo padrao
+    dos demais, ate conseguir abrir o rascunho. A protecao contra duplicidade
+    (nunca reenvia) vem do check no Outlook em cotas_no_outlook(). O contador de
+    falhas serve so para exibir no log quantas tentativas ja houve hoje."""
+    return False
 
 
 ################################## WATCHDOG (ANTI-TRAVAMENTO) ##################################
@@ -797,17 +799,16 @@ def processar_ciclo():
         for f in info['fundos']:
             if f in processados:
                 print(f"    [JA FEITO] {f}")
-            elif fundo_bloqueado(f):
-                print(f"    [PARADO]   {f}  (falhou {MAX_FALHAS_POR_FUNDO}x, nao tenta mais hoje)")
+            elif _get_falhas().get(f, 0) > 0:
+                print(f"    [RETENTANDO] {f}  (ja falhou {_get_falhas().get(f, 0)}x hoje - segue tentando)")
             else:
                 print(f"    [NOVO]     {f}")
 
-        # 4. Processar FUNDO A FUNDO (evita que 1 erro derrube o lote)
-        fundos_a_tentar = [f for f in fundos_novos if not fundo_bloqueado(f)]
-        if not fundos_a_tentar:
-            print(f"\n  Todos os fundos novos ja atingiram o limite de {MAX_FALHAS_POR_FUNDO} falhas.")
-            continue
-
+        # 4. Processar FUNDO A FUNDO (evita que 1 erro derrube o lote).
+        # NUNCA desiste: todo fundo aprovado eh retentado a cada ciclo ate abrir o
+        # rascunho (fundo_bloqueado() sempre False). Duplicidade evitada pelo check
+        # no Outlook (cotas_no_outlook) mais abaixo.
+        fundos_a_tentar = list(fundos_novos)
         print(f"\n  Executando mailer para {len(fundos_a_tentar)} fundo(s)...")
 
         # Descobre UMA vez por ciclo o que ja esta no Outlook (rascunho/enviado/pasta
@@ -836,7 +837,7 @@ def processar_ciclo():
             #   - existe (tratado acima em "JA NO OUTLOOK").
             #   - Outlook indisponivel (None) -> nao da para confirmar. Mantem ORFA.
             #   - confirmadamente ausente     -> nada foi criado. Limpa a tentativa e
-            #                                    reprocessa agora (limite: MAX_FALHAS_POR_FUNDO).
+            #                                    reprocessa agora (segue tentando todo ciclo).
             if tentativa_orfa(data_json, fundo):
                 if cotas_outlook is None:
                     print(f"\n    [{fundo}] ORFA - nao foi possivel confirmar no Outlook. Mantendo para revisao.")
@@ -897,39 +898,31 @@ def processar_ciclo():
                             remover_tentativa(data_json, fundo)  # resultado conhecido (nao concluiu mas nao eh orfa)
                             print(f"    [{fundo}] {motivo_claro}  (detalhe: {motivo_real})")
                         else:
-                            bloqueou = registrar_falha(fundo)
+                            n_falhas = registrar_falha(fundo)
                             salvar_erro(data_json, fundo, motivo_real)
                             remover_tentativa(data_json, fundo)  # resultado conhecido, nao eh orfa
-                            print(f"    [{fundo}] ERRO - {motivo_real} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
-                            if bloqueou:
-                                print(f"    [{fundo}] PARADO - nao tenta mais hoje")
+                            print(f"    [{fundo}] ERRO - {motivo_real} (falha {n_falhas} - segue tentando no proximo ciclo)")
                 else:
                     # Subprocess terminou sem gerar o arquivo de resultado.
                     # Pode significar crash no meio - mantem tentativa como ORFA para revisao humana.
-                    bloqueou = registrar_falha(fundo)
+                    n_falhas = registrar_falha(fundo)
                     motivo = "script falhou (sem resultado) - tentativa mantida como ORFA (revisar Outlook)"
                     salvar_erro(data_json, fundo, motivo)
                     # NAO remove tentativa - pode ter chegado a abrir rascunho parcial.
-                    print(f"    [{fundo}] ERRO - {motivo} (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
-                    if bloqueou:
-                        print(f"    [{fundo}] PARADO - nao tenta mais hoje")
+                    print(f"    [{fundo}] ERRO - {motivo} (falha {n_falhas} - segue tentando no proximo ciclo)")
 
             except subprocess.TimeoutExpired:
-                bloqueou = registrar_falha(fundo)
+                n_falhas = registrar_falha(fundo)
                 motivo = "timeout (5 min) - tentativa mantida como ORFA (revisar Outlook)"
                 salvar_erro(data_json, fundo, motivo)
                 # NAO remove tentativa - mailer pode ter travado ja com rascunho aberto
-                print(f"    [{fundo}] TIMEOUT (5 min) ORFA (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
-                if bloqueou:
-                    print(f"    [{fundo}] PARADO - nao tenta mais hoje")
+                print(f"    [{fundo}] TIMEOUT (5 min) ORFA (falha {n_falhas} - segue tentando no proximo ciclo)")
             except Exception as e:
-                bloqueou = registrar_falha(fundo)
+                n_falhas = registrar_falha(fundo)
                 motivo = f"{e} - tentativa mantida como ORFA"
                 salvar_erro(data_json, fundo, motivo)
                 # NAO remove tentativa - estado desconhecido
-                print(f"    [{fundo}] ERRO: {e} ORFA (falha {_get_falhas().get(fundo,0)}/{MAX_FALHAS_POR_FUNDO})")
-                if bloqueou:
-                    print(f"    [{fundo}] PARADO - nao tenta mais hoje")
+                print(f"    [{fundo}] ERRO: {e} ORFA (falha {n_falhas} - segue tentando no proximo ciclo)")
 
     # 6. Mover emails processados para pasta COTAS
     # So move se TODOS os fundos do email estao 'tratados' - ou processados pelo mailer,
@@ -970,7 +963,7 @@ def main():
     print("=" * 60)
     print("  ROBO DE MAILERS - COTAS DIARIAS")
     print(f"  Intervalo: {INTERVALO_MINUTOS} minutos")
-    print(f"  Max falhas/fundo: {MAX_FALHAS_POR_FUNDO}")
+    print("  Retentativa: NUNCA desiste (retenta todo ciclo ate abrir o rascunho)")
     print(f"  Watchdog: {TIMEOUT_CICLO_SEG}s")
     print(f"  Mailer: {SCRIPT_MAILER}")
     print(f"  Diretorio: {DIRETORIO}")
