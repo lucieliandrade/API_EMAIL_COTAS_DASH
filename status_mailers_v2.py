@@ -1016,6 +1016,50 @@ def _scan_pdfs_dia(d_ref: str):
         resultado.append((nome, mtime))
     return resultado
 
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _site_informativo_enviado(data_ddmmyyyy):
+    """Fundo SITE: confere se o informativo diário do site já saiu.
+    Procura o e-mail de assunto exato 'Relatório Diário de Cotas' na CAIXA DE
+    ENTRADA e/ou na pasta ***RI_MIDDLE/EMAIL MARKETING e confirma pela DATA no
+    CORPO (D-1, formato DD/MM/YYYY) - a data no corpo é a fonte da verdade.
+    Cache 120s. Retorna True/False."""
+    assunto = "Relatório Diário de Cotas"
+    try:
+        import pythoncom
+        import win32com.client as win32
+        pythoncom.CoInitialize()
+        ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
+        inbox = ns.GetDefaultFolder(6)
+        pastas = [inbox]
+        # subpasta ***RI_MIDDLE / EMAIL MARKETING (nome exato, com acento/maiúsculas)
+        for f in inbox.Folders:
+            if 'RI_MIDDLE' in str(f.Name).upper():
+                for sf in f.Folders:
+                    if str(sf.Name).upper().strip() == 'EMAIL MARKETING':
+                        pastas.append(sf)
+                break
+        for pasta in pastas:
+            itens = pasta.Items
+            try:
+                res = itens.Restrict("[Subject] = '" + assunto.replace("'", "''") + "'")
+            except Exception:
+                res = itens
+            for msg in res:
+                try:
+                    if str(msg.Subject).strip() != assunto:
+                        continue
+                    if data_ddmmyyyy in str(msg.Body):
+                        return True
+                    if data_ddmmyyyy in str(msg.HTMLBody):
+                        return True
+                except Exception:
+                    continue
+        return False
+    except Exception:
+        return False
+
+
 status     = {}
 erros      = {}
 horarios   = {}
@@ -1099,6 +1143,11 @@ for d in dias:
         for fs in _aprov_site:
             if fs not in processados and fs not in _aguard_dia:
                 processados.add(fs)
+        # Fundo SITE: marcado como feito quando o informativo diário do site saiu
+        # (e-mail "Relatório Diário de Cotas" com a data D-1 no corpo). A data no
+        # corpo é a fonte da verdade - ver _site_informativo_enviado().
+        if _site_informativo_enviado(ref_de(d).strftime('%d/%m/%Y')):
+            processados.add("SITE")
         status[d_str]     = processados
         # Filtrar orfas: se fundo ja esta em processados, nao eh mais orfa
         orfas[d_str] = {f: info for f, info in orfas[d_str].items() if f not in processados}
