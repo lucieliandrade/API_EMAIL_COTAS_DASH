@@ -541,8 +541,9 @@ def render_intrag_esteira():
             with fcol1:
                 if st.button("📧 Encaminhar Itaú → Zúñiga", key="intrag_fwd_zuniga",
                              use_container_width=True,
-                             help=f"Abre no Outlook o encaminhamento do e-mail do Itaú "
-                                  f"(com o PDF) para {ZUNIGA_DEST}. Revise e envie."):
+                             help=f"Abre o encaminhamento do e-mail do Itaú (com o PDF) para "
+                                  f"{ZUNIGA_DEST} no Outlook DO SERVIDOR (máquina da Lucieli), "
+                                  f"não na sua tela. Quem envia precisa estar no servidor."):
                     ok_fwd, msg_fwd = _intrag_encaminhar_zuniga()
                     if ok_fwd:
                         st.toast("Rascunho de encaminhamento aberto no Outlook", icon="✉️")
@@ -552,8 +553,9 @@ def render_intrag_esteira():
                 st.markdown(
                     f"<div style='padding-top:8px;font-size:11px;color:#94a3b8'>"
                     f"Encaminha o e-mail do Itaú (assunto INSTRUÇÃO CAPITANIA, com PDF) para "
-                    f"<code style='font-size:10px'>{ZUNIGA_DEST}</code> — abre como rascunho; "
-                    f"revise, envie e marque ✓ no step 2.</div>",
+                    f"<code style='font-size:10px'>{ZUNIGA_DEST}</code> — abre como rascunho "
+                    f"<b>no Outlook do servidor</b> (máquina da Lucieli), não na tela de quem "
+                    f"clicou. Só 1 pessoa encaminha; revise, envie e marque ✓ no step 2.</div>",
                     unsafe_allow_html=True)
 
         if is_dia_util:
