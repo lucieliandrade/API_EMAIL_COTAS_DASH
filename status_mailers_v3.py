@@ -415,7 +415,7 @@ def _intrag_step_card(col, num, titulo, accent, icon, sub):
 
 
 def render_intrag_esteira():
-    """Renderiza a esteira INTRAG de 7 steps."""
+    """Renderiza a esteira INTRAG de 8 steps."""
     proc = _intrag_proc_hoje()
     hb_ts, hb_estado = _intrag_heartbeat()
     n_txts = _intrag_txts_hoje()
@@ -445,7 +445,22 @@ def render_intrag_esteira():
     else:
         s1 = ('zero', '⚠️', 'robô off')
 
-    # Step 2 - TXTs gerados
+    # Step 2 - Email Zuniga (manual): apos receber o email/PDF do Itau, encaminhar
+    # para lucieli.andrade@capitania.net (so encaminhar, copiando esse endereco).
+    # So fica pendente depois que o email do Itau chega (step 1 = sucesso).
+    zi = manual.get('email_zuniga')
+    if not is_dia_util:
+        sz = ('fut', '🏖️', '-', False)
+    elif zi and zi.get('feito'):
+        sz = ('ok', '✅', f"feito {zi.get('ts', '')[:5]}", True)
+    elif proc and proc['tipo'] == 'sem_movimento':
+        sz = ('ok', '🏖️', 'sem mov', False)
+    elif proc and proc['tipo'] == 'sucesso':
+        sz = ('pend', '📧', 'encaminhar', False)
+    else:
+        sz = ('fut', '⏳', 'aguarda email', False)
+
+    # Step 3 - TXTs gerados
     if not is_dia_util:
         s2 = ('fut', '🏖️', '-')
     elif proc and proc['tipo'] == 'sem_movimento':
@@ -485,15 +500,15 @@ def render_intrag_esteira():
         s7 = ('fut', '·', 'aguarda step 6')
 
     # Resumo no titulo do expander
-    todos_steps = [s1, s2, s3, s4, s5, s6, s7]
+    todos_steps = [s1, sz, s2, s3, s4, s5, s6, s7]
     n_ok = sum(1 for s in todos_steps if s[0] == 'ok')
     n_pend = sum(1 for s in todos_steps if s[0] == 'pend')
     if not is_dia_util:
         resumo = "🏖️ fim de semana"
-    elif n_ok == 7:
-        resumo = "✅ 7/7 etapas concluídas"
+    elif n_ok == 8:
+        resumo = "✅ 8/8 etapas concluídas"
     elif n_pend > 0 or n_ok > 0:
-        resumo = f"⏳ {n_ok}/7 etapas concluídas"
+        resumo = f"⏳ {n_ok}/8 etapas concluídas"
     else:
         resumo = "⏰ aguardando início"
 
@@ -511,25 +526,27 @@ def render_intrag_esteira():
         with code_col:
             st.code(INTRAG_PASTA_NET, language=None)
 
-        cols = st.columns(7)
+        cols = st.columns(8)
         _intrag_step_card(cols[0], '1', 'Email Itaú', *s1)
-        _intrag_step_card(cols[1], '2', 'TXTs gerados', *s2)
-        _intrag_step_card(cols[2], '3', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
-        _intrag_step_card(cols[3], '4', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
-        _intrag_step_card(cols[4], '5', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
-        _intrag_step_card(cols[5], '6', 'Liquidação', s6[0], s6[1], s6[2])
-        _intrag_step_card(cols[6], '7', 'Arquivo pasta net', *s7)
+        _intrag_step_card(cols[1], '2', 'Email Zúñiga', sz[0], sz[1], sz[2])
+        _intrag_step_card(cols[2], '3', 'TXTs gerados', *s2)
+        _intrag_step_card(cols[3], '4', 'Passivo Itaú→FIE', s3[0], s3[1], s3[2])
+        _intrag_step_card(cols[4], '5', 'Ativo FIE→FIFE', s4[0], s4[1], s4[2])
+        _intrag_step_card(cols[5], '6', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
+        _intrag_step_card(cols[6], '7', 'Liquidação', s6[0], s6[1], s6[2])
+        _intrag_step_card(cols[7], '8', 'Arquivo pasta net', *s7)
 
         if is_dia_util:
             hoje_iso = agora.date().isoformat()
-            ck_cols = st.columns(7)
+            ck_cols = st.columns(8)
             ck_cols[0].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
-            ck_cols[1].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+            ck_cols[2].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
             for col, chave, marcado in [
-                (ck_cols[2], 'subiu_passivo_itau', s3[3]),
-                (ck_cols[3], 'subiu_ativo_fife', s4[3]),
-                (ck_cols[4], 'subiu_passivo_fife', s5[3]),
-                (ck_cols[5], 'liquidado', s6[3]),
+                (ck_cols[1], 'email_zuniga', sz[3]),
+                (ck_cols[3], 'subiu_passivo_itau', s3[3]),
+                (ck_cols[4], 'subiu_ativo_fife', s4[3]),
+                (ck_cols[5], 'subiu_passivo_fife', s5[3]),
+                (ck_cols[6], 'liquidado', s6[3]),
             ]:
                 with col:
                     # key inclui data: evita session_state do dia anterior re-marcar no dia novo
@@ -550,7 +567,7 @@ def render_intrag_esteira():
                         _intrag_marcar(chave, novo)
                         st.session_state[skey] = novo
                         st.rerun()
-            ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
+            ck_cols[7].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
 
 
 # ── ENVIO DIÁRIO (XMLs Mellon: ICATU / Aquila / BASF) ────────────────────────
