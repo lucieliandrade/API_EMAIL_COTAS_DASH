@@ -76,6 +76,8 @@ INTRAG_HEARTBEAT = os.path.join(INTRAG_ROBO_DIR, "agendador_heartbeat.txt")
 INTRAG_PROCESSADOS = os.path.join(INTRAG_ROBO_DIR, "processados_intrag.txt")
 INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_ROBO_DIR, "esteira_estado.json")
 INTRAG_PASTA_NET = r"N:\Middle\Resgates\Codigos_movimentacoes_adm\Código Itaú"
+# Destino do encaminhamento do e-mail do Itau (step 2 - Email Zuniga)
+ZUNIGA_DEST = "lucieli.andrade@capitania.net"
 
 # Envio Diário (XMLs Mellon para ICATU / Aquila / BASF)
 ENVIO_DIARIO_PASTA_XML = r"X:\RI + BACK - PILOTO XML\Mellon_API_Diariamente(RI)"
@@ -398,6 +400,53 @@ def _intrag_marcar(chave, valor):
         st.warning(f"Falha ao salvar estado INTRAG: {e}")
 
 
+def _intrag_encaminhar_zuniga():
+    """Abre no Outlook o ENCAMINHAMENTO do e-mail do Itaú (assunto INSTRU+CAPITANIA,
+    com PDF anexo, recebido hoje na Caixa de Entrada) para ZUNIGA_DEST.
+    Usa o MESMO critério que o robô usa para achar o e-mail. Mantém o anexo original
+    e NÃO altera nada — só encaminha. Display (NUNCA Send): abre como rascunho para
+    revisar e enviar manualmente. Retorna (True, None) ou (False, motivo)."""
+    try:
+        import pythoncom
+        import win32com.client as win32
+        pythoncom.CoInitialize()
+        ns = win32.Dispatch('Outlook.Application').GetNamespace('MAPI')
+        inbox = ns.GetDefaultFolder(6)
+        hoje = datetime.now().strftime('%m/%d/%Y')
+        try:
+            itens = inbox.Items.Restrict(f"[ReceivedTime] >= '{hoje} 00:00'")
+            itens.Sort("[ReceivedTime]", True)
+        except Exception:
+            itens = inbox.Items
+        alvo = None
+        for mail in itens:
+            try:
+                au = (getattr(mail, 'Subject', '') or '').upper()
+                if au.startswith('RE:') or au.startswith('RES:'):
+                    continue
+                if 'INSTRU' not in au or 'CAPITANIA' not in au:
+                    continue
+                tem_pdf = any(
+                    str(mail.Attachments.Item(i).FileName).lower().endswith('.pdf')
+                    for i in range(1, mail.Attachments.Count + 1)
+                )
+                if not tem_pdf:
+                    continue
+                alvo = mail
+                break
+            except Exception:
+                continue
+        if alvo is None:
+            return False, ("e-mail do Itaú (INSTRUÇÃO CAPITANIA com PDF) não encontrado "
+                           "na Caixa de Entrada de hoje")
+        fwd = alvo.Forward()
+        fwd.To = ZUNIGA_DEST
+        fwd.Display()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
 def _intrag_step_card(col, num, titulo, accent, icon, sub):
     cores = {'ok': '#22c55e', 'pend': '#f59e0b', 'zero': '#ef4444', 'fut': '#94a3b8'}
     cor = cores.get(accent, '#94a3b8')
@@ -535,6 +584,29 @@ def render_intrag_esteira():
         _intrag_step_card(cols[5], '6', 'Passivo FIE→FIFE', s5[0], s5[1], s5[2])
         _intrag_step_card(cols[6], '7', 'Liquidação', s6[0], s6[1], s6[2])
         _intrag_step_card(cols[7], '8', 'Arquivo pasta net', *s7)
+
+        # Step 2 (Email Zúñiga): botão para abrir o rascunho de ENCAMINHAMENTO do
+        # e-mail do Itaú (com o PDF) para ZUNIGA_DEST. Só aparece depois que o e-mail
+        # chegou (proc=sucesso) ou o step já foi marcado (permite reabrir). Display.
+        if is_dia_util and ((proc and proc.get('tipo') == 'sucesso') or sz[3]):
+            fcol1, fcol2 = st.columns([2, 4])
+            with fcol1:
+                if st.button("📧 Encaminhar Itaú → Zúñiga", key="intrag_fwd_zuniga",
+                             use_container_width=True,
+                             help=f"Abre no Outlook o encaminhamento do e-mail do Itaú "
+                                  f"(com o PDF) para {ZUNIGA_DEST}. Revise e envie."):
+                    ok_fwd, msg_fwd = _intrag_encaminhar_zuniga()
+                    if ok_fwd:
+                        st.toast("Rascunho de encaminhamento aberto no Outlook", icon="✉️")
+                    else:
+                        st.error(f"Rascunho NÃO aberto: {msg_fwd}")
+            with fcol2:
+                st.markdown(
+                    f"<div style='padding-top:8px;font-size:11px;color:#94a3b8'>"
+                    f"Encaminha o e-mail do Itaú (assunto INSTRUÇÃO CAPITANIA, com PDF) para "
+                    f"<code style='font-size:10px'>{ZUNIGA_DEST}</code> — abre como rascunho; "
+                    f"revise, envie e marque ✓ no step 2.</div>",
+                    unsafe_allow_html=True)
 
         if is_dia_util:
             hoje_iso = agora.date().isoformat()
