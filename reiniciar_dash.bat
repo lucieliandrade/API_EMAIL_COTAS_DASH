@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo Iniciando dashboard de cotas...
-echo Acesse: http://192.168.3.83:8502
+echo Acesse: http://RI011:8502  (nome fixo - nao muda com o IP)
 echo Login: RI
 echo.
 echo Para fechar, pressione Ctrl+C ou feche esta janela.

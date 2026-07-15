@@ -90,7 +90,7 @@ def criar_alerta_robo_morto(minutos_parado, tentativa=1):
             <li>Drive de rede Z: ou X: desconectado</li>
             <li>Maquina reiniciou sem o .bat Startup subir</li>
         </ul>
-        <p>Acao: abrir o Dash de Cotas (http://192.168.3.83:8502) ou reiniciar manualmente
+        <p>Acao: abrir o Dash de Cotas (http://RI011:8502) ou reiniciar manualmente
         via mailer_robo.bat na pasta Startup.</p>
         """
         mail.Display()

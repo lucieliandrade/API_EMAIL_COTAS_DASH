@@ -46,7 +46,7 @@ programas (os "robôs")** que rodam em segundo plano:
 
 ## 2. Como abrir o dash
 
-- **Endereço no navegador:** `http://192.168.3.81:8502/` (ou `192.168.3.83:8502`)
+- **Endereço no navegador:** `http://RI011:8502/` — nome fixo da máquina, não muda quando o IP troca. (Fallback: `http://RI011.CAPITANIA.LOCAL:8502/` ou o IP do dia.)
 - O dash roda numa **máquina servidora** que fica sempre ligada. Ele é iniciado
   automaticamente pelo arquivo [`auto_dash.bat`](auto_dash.bat).
 - A tecnologia por trás chama-se **Streamlit** (uma ferramenta que transforma

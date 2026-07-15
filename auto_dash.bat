@@ -11,4 +11,4 @@ start "" streamlit run status_mailers_v2.py --server.port 8502 --server.address 
 
 :: Aguarda 5 segundos e abre no Chrome
 timeout /t 5 /nobreak >NUL
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" "http://192.168.3.83:8502"
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" "http://RI011:8502"

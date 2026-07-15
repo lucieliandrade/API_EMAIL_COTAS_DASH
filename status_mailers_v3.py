@@ -14,7 +14,7 @@ r"""
    Se um robô para, o dash mostra "Parado", mas ele mesmo continua funcionando.
 
  COMO RODA
-   auto_dash.bat  ->  streamlit run  ->  http://192.168.3.81:8502  (login RI)
+   auto_dash.bat  ->  streamlit run  ->  http://RI011:8502  (login RI)
    Recarrega sozinho a cada 2 min (st_autorefresh).
 
  MAPA DO CÓDIGO (procure por estes marcadores "── ... ──" ao navegar):

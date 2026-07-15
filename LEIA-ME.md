@@ -87,6 +87,8 @@ Na raiz ficam só os de config e este mapa:
 ---
 
 ## Endereços úteis
-- Dash de cotas: http://192.168.3.83:8502 (ou http://localhost:8502 na própria máquina)
+- Dash de cotas (time): **http://RI011:8502** — nome fixo da máquina, NÃO muda quando o IP troca (DHCP). Use sempre este.
+- Dash de cotas (na própria máquina): http://localhost:8502
+- Fallback se o nome não resolver: http://RI011.CAPITANIA.LOCAL:8502 ou o IP do dia
 - Dash de rotinas: http://localhost:8503
 - Dash de cotas NOVO (teste): http://localhost:8504
