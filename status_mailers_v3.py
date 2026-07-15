@@ -1374,6 +1374,19 @@ if _orfas_hoje:
     </div>
     """, unsafe_allow_html=True)
 
+def _aguard_motivo_curto(motivo):
+    """Classifica o motivo do 'aguardando' para exibir o rótulo certo:
+    - 'carteira não bate'/batimento => a cota JÁ está na base, o que trava é o
+      batimento (COTAS_CAP). NÃO é falta de cota.
+    - senão => cota ainda não foi lançada no COTAS_CAP.
+    Evita mostrar 'aguardando COTAS_CAP' (parece falta de cota) quando na verdade
+    a cota chegou e só o batimento está pendente."""
+    m = (motivo or "").lower()
+    if "batimento" in m or "carteira" in m or "bate" in m:
+        return "carteira não bate"
+    return "aguardando cota"
+
+
 # ── BANNER: FUNDOS AGUARDANDO COTA NO BANCO ─────────────────────────────────
 # So mostra fundos que AINDA nao foram processados/enviados hoje. Se o fundo ja
 # aparece como ✅ na tabela (esta no set de processados), some do banner sozinho -
@@ -1390,24 +1403,22 @@ if _aguard_hoje:
     _linhas = []
     for _f, _info in sorted(_aguard_hoje.items()):
         _min = int((datetime.now() - _info["desde"]).total_seconds() / 60)
-        _motivo = _info.get("motivo", "").strip()
-        if _motivo:
-            _linhas.append(f"<b>{_f}</b> — {_motivo} ({_min} min)")
-        else:
-            _linhas.append(f"<b>{_f}</b> ({_min} min)")
+        _rot = _aguard_motivo_curto(_info.get("motivo", ""))
+        _linhas.append(f"<b>{_f}</b> — {_rot} ({_min} min)")
     _lista_html = "<br>".join(_linhas)
     _total = len(_aguard_hoje)
     st.markdown(f"""
     <div style="background:#fed7aa; border-left:5px solid #c2410c;
                 padding:12px 16px; border-radius:6px; margin-bottom:16px;">
       <div style="font-size:14px; font-weight:700; color:#9a3412; margin-bottom:6px;">
-        ⏳ {_total} fundo(s) aguardando dado para lancar a cota (COTAS_CAP / indice)
+        ⏳ {_total} fundo(s) aguardando envio (cota ou batimento no COTAS_CAP)
       </div>
       <div style="font-size:12px; color:#7c2d12;">
         {_lista_html}
       </div>
       <div style="font-size:11px; color:#7c2d12; margin-top:6px; font-style:italic;">
-        Apos 25 min, o robo cria automaticamente um rascunho de cobranca no Outlook.
+        "aguardando cota" = cota ainda não lançada no COTAS_CAP (após 25 min o robô cria rascunho de cobrança).
+        "carteira não bate" = cota já está na base, o que trava é o batimento — verificar a carteira.
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1554,7 +1565,7 @@ for fundo in fundos_filtrados:
             elif fundo in aguardando.get(d_str, {}):
                 info_ag = aguardando[d_str][fundo]
                 min_decorridos = int((datetime.now() - info_ag["desde"]).total_seconds() / 60)
-                linha[col] = f"⏳ aguardando COTAS_CAP {min_decorridos}min"
+                linha[col] = f"⏳ {_aguard_motivo_curto(info_ag.get('motivo', ''))} {min_decorridos}min"
             else:
                 motivo = erros[d_str].get(fundo, "")
                 linha[col] = f"❌ {motivo}" if motivo else "❌"
