@@ -533,9 +533,22 @@ def render_intrag_esteira():
             ]:
                 with col:
                     # key inclui data: evita session_state do dia anterior re-marcar no dia novo
-                    novo = st.checkbox('feito', value=marcado, key=f'intrag_{hoje_iso}_{chave}', label_visibility='collapsed')
+                    wkey = f'intrag_{hoje_iso}_{chave}'
+                    skey = f'_seen_{wkey}'
+                    # Sincroniza com o JSON compartilhado (Z:\...\esteira_estado.json).
+                    # Se OUTRA pessoa do time mudou o estado no arquivo desde a ultima vez
+                    # que ESTA sessao/aba viu, forca o checkbox a refletir o disco. Sem isso,
+                    # o Streamlit ignora o value= apos o primeiro render e o visual congela
+                    # por sessao — o dado sincroniza, mas o check nao aparece para os outros.
+                    # marcado == skey => JSON nao mudou do nosso ponto de vista, entao uma
+                    # diferenca no widget e o clique da propria pessoa: nao sobrescrever.
+                    if st.session_state.get(skey) != marcado:
+                        st.session_state[wkey] = marcado
+                        st.session_state[skey] = marcado
+                    novo = st.checkbox('feito', key=wkey, label_visibility='collapsed')
                     if novo != marcado:
                         _intrag_marcar(chave, novo)
+                        st.session_state[skey] = novo
                         st.rerun()
             ck_cols[6].markdown("<div style='font-size:10px;color:#94a3b8;text-align:center'>(auto)</div>", unsafe_allow_html=True)
 
