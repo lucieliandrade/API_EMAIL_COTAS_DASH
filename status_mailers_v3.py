@@ -78,6 +78,9 @@ INTRAG_ESTADO_MANUAL = os.path.join(INTRAG_ROBO_DIR, "esteira_estado.json")
 INTRAG_PASTA_NET = r"N:\Middle\Resgates\Codigos_movimentacoes_adm\Código Itaú"
 # Destino do encaminhamento do e-mail do Itau (step 2 - Email Zuniga)
 ZUNIGA_DEST = "lucieli.andrade@capitania.net"
+# Remetente do encaminhamento: sempre o e-mail generico compartilhado (os 3 usam),
+# nao a conta pessoal de quem disparou. Deixa o remetente uniforme para o Zuniga.
+ZUNIGA_FROM = "invest@capitaniainvestimentos.com.br"
 
 # Envio Diário (XMLs Mellon para ICATU / Aquila / BASF)
 ENVIO_DIARIO_PASTA_XML = r"X:\RI + BACK - PILOTO XML\Mellon_API_Diariamente(RI)"
@@ -441,6 +444,10 @@ def _intrag_encaminhar_zuniga():
                            "na Caixa de Entrada de hoje")
         fwd = alvo.Forward()
         fwd.To = ZUNIGA_DEST
+        try:
+            fwd.SentOnBehalfOfName = ZUNIGA_FROM  # remetente = invest@ (generico), nao conta pessoal
+        except Exception:
+            pass
         fwd.Display()
         return True, None
     except Exception as e:
